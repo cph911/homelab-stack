@@ -44,8 +44,9 @@ git clone https://github.com/cph911/homelab-stack.git
 cd homelab-stack
 
 # Make the installer executable
+```
 chmod +x install-homelab.sh
-
+```
 # Run the installer
 ./install-homelab.sh
 The installer will:
