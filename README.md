@@ -40,9 +40,10 @@ Prerequisites
 * Ports 80, 443, 8080 available
 Installation
 # Clone the repository
+```
 git clone https://github.com/cph911/homelab-stack.git
 cd homelab-stack
-
+```
 # Make the installer executable
 ```
 chmod +x install-homelab.sh
