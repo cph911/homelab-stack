@@ -1,8 +1,17 @@
 # 🏠 Homelab Stack
 
-**Lean, production-ready home server installer for self-hosters who value simplicity over bloat.**
+Lean, production-ready home server installer for self-hosters who value simplicity over bloat.
 
 Deploy n8n automation, Jellyfin media streaming, and essential services with automated SSL certificates, resource limits, and proper monitoring. Built for real hardware constraints (16-32GB RAM), not fantasy cloud specs.
+
+
+> ⚠️ IMPORTANT DISCLAIMER
+> 
+> This installer is NOT TESTED YET and is currently for personal experimentation only. 
+> 
+> Full credit goes to [Mahmoud Alkhatib](https://github.com/makhatib) for creating the [original AI-stack project](https://github.com/makhatib/AI-stack). I simply modified his excellent work to fit my specific use case by removing services I don't need and adding resource limits.
+> 
+> Use at your own risk. Test in a non-production environment first.
 
 -----
 
@@ -10,29 +19,29 @@ Deploy n8n automation, Jellyfin media streaming, and essential services with aut
 
 ### Core Services (Always Installed)
 
-- **n8n** - Workflow automation platform (400+ integrations)
-- **Jellyfin** - Media streaming server (your personal Netflix)
-- **Traefik** - Reverse proxy with automatic SSL certificates
-- **PostgreSQL** - Database backend for n8n
+- n8n - Workflow automation platform (400+ integrations)
+- Jellyfin - Media streaming server (your personal Netflix)
+- Traefik - Reverse proxy with automatic SSL certificates
+- PostgreSQL - Database backend for n8n
 
 ### Optional Services (You Choose)
 
-- **Portainer** - Visual Docker container management
-- **Uptime Kuma** - Service monitoring with alerts
+- Portainer - Visual Docker container management
+- Uptime Kuma - Service monitoring with alerts
 
 ### What’s NOT Included (And Why)
 
-- ❌ **Supabase** - Massive overhead (8+ containers), not needed for most homelabs
-- ❌ **Qdrant/Vector DBs** - Only needed for AI/RAG workflows
-- ❌ **MinIO** - S3 storage overkill, use local volumes
-- ❌ **Ollama** - 8GB+ RAM hog, use API-based LLMs instead
-- ❌ **Grafana/Prometheus** - Complex monitoring, Uptime Kuma is enough
+- ❌ Supabase - Massive overhead (8+ containers), not needed for most homelabs
+- ❌ Qdrant/Vector DBs - Only needed for AI/RAG workflows
+- ❌ MinIO - S3 storage overkill, use local volumes
+- ❌ Ollama - 8GB+ RAM hog, use API-based LLMs instead
+- ❌ Grafana/Prometheus - Complex monitoring, Uptime Kuma is enough
 
 -----
 
 ## 📊 Resource Usage
 
-**Total RAM: ~7-8GB** (leaves headroom on 16GB servers)
+Total RAM: ~7-8GB (leaves headroom on 16GB servers)
 
 |Service    |RAM Limit|CPU Limit|Purpose        |
 |-----------|---------|---------|---------------|
@@ -43,7 +52,7 @@ Deploy n8n automation, Jellyfin media streaming, and essential services with aut
 |Portainer  |256MB    |0.5 CPU  |Management     |
 |Uptime Kuma|512MB    |0.5 CPU  |Monitoring     |
 
-**Why resource limits matter:** Without them, one runaway process can kill your entire server. This is production-ready configuration, not a demo.
+Why resource limits matter: Without them, one runaway process can kill your entire server. This is production-ready configuration, not a demo.
 
 -----
 
@@ -80,13 +89,13 @@ The installer will:
 1. Pull images and start services
 1. Set up SSL certificates automatically
 
-**Total time: 10-15 minutes**
+Total time: 10-15 minutes
 
 -----
 
 ## 🌐 DNS Configuration
 
-**CRITICAL:** Configure DNS BEFORE running the installer.
+CRITICAL: Configure DNS BEFORE running the installer.
 
 You need A records pointing to your server IP:
 
@@ -103,12 +112,12 @@ Verify with: `nslookup n8n.yourdomain.com`
 
 ## 🔐 Security Features
 
-- ✅ **Auto-generated passwords** - 64-character secure keys for every service
-- ✅ **HTTPS enforced** - HTTP automatically redirects to HTTPS
-- ✅ **Let’s Encrypt SSL** - Free, automatic certificates
-- ✅ **Secure file permissions** - `.env` set to 600 (owner read/write only)
-- ✅ **Resource isolation** - Docker networks and proper limits
-- ✅ **No default passwords** - Every installation is unique
+- ✅ Auto-generated passwords - 64-character secure keys for every service
+- ✅ HTTPS enforced - HTTP automatically redirects to HTTPS
+- ✅ Let’s Encrypt SSL - Free, automatic certificates
+- ✅ Secure file permissions - `.env` set to 600 (owner read/write only)
+- ✅ Resource isolation - Docker networks and proper limits
+- ✅ No default passwords - Every installation is unique
 
 All credentials saved in `.env` file (automatically secured).
 
@@ -139,8 +148,8 @@ homelab-stack/
 
 ```bash
 # Copy media to the included directories
-cp -r /path/to/your/movies/* jellyfin-media/movies/
-cp -r /path/to/your/tv/* jellyfin-media/tv/
+cp -r /path/to/your/movies/ jellyfin-media/movies/
+cp -r /path/to/your/tv/ jellyfin-media/tv/
 ```
 
 ### Option 2: Mount Your Own Directories
@@ -254,8 +263,8 @@ docker run --rm \
   alpine tar czf /backup/n8n-data-$DATE.tar.gz -C /data .
 
 # Keep only last 7 days
-find $BACKUP_DIR -name "*.sql" -mtime +7 -delete
-find $BACKUP_DIR -name "*.tar.gz" -mtime +7 -delete
+find $BACKUP_DIR -name ".sql" -mtime +7 -delete
+find $BACKUP_DIR -name ".tar.gz" -mtime +7 -delete
 
 echo "Backup completed: $DATE"
 ```
@@ -266,7 +275,7 @@ Add to crontab (`crontab -e`):
 
 ```bash
 # Daily backup at 2 AM
-0 2 * * * /root/homelab-backup.sh >> /var/log/homelab-backup.log 2>&1
+0 2    /root/homelab-backup.sh >> /var/log/homelab-backup.log 2>&1
 ```
 
 ### Restore from Backup
@@ -389,9 +398,9 @@ sudo swapon /swapfile
 
 ### 4. Secure Traefik Dashboard
 
-The Traefik dashboard runs on port 8080 **without authentication**.
+The Traefik dashboard runs on port 8080 without authentication.
 
-**Options:**
+Options:
 
 1. Firewall it: `sudo ufw allow from YOUR_HOME_IP to any port 8080`
 1. Disable it: Remove `--api.dashboard=true` from docker-compose.yml
@@ -409,7 +418,7 @@ The Traefik dashboard runs on port 8080 **without authentication**.
 
 Found a bug? Want to add a feature? PRs welcome!
 
-**Before contributing:**
+Before contributing:
 
 - Keep the “lean” philosophy (no bloat)
 - Add resource limits for new services
@@ -445,11 +454,11 @@ Found a bug? Want to add a feature? PRs welcome!
 
 ## ⚠️ Important Notes
 
-- **SSL certificates take 2-5 minutes to generate** - Be patient on first run
-- **DNS must be configured BEFORE installation** - Let’s Encrypt verifies ownership
-- **Traefik dashboard (port 8080) is insecure** - Restrict access immediately
-- **Resource limits are mandatory** - Don’t remove them “for performance”
-- **Backups are your responsibility** - Set them up on day one
+- SSL certificates take 2-5 minutes to generate - Be patient on first run
+- DNS must be configured BEFORE installation - Let’s Encrypt verifies ownership
+- Traefik dashboard (port 8080) is insecure - Restrict access immediately
+- Resource limits are mandatory - Don’t remove them “for performance”
+- Backups are your responsibility - Set them up on day one
 
 -----
 
@@ -488,9 +497,9 @@ Inspired by [makhatib/AI-stack](https://github.com/makhatib/AI-stack) but stripp
 
 ## 💬 Support
 
-- **Issues:** [GitHub Issues](https://github.com/cph911/homelab-stack/issues)
-- **Discussions:** [GitHub Discussions](https://github.com/cph911/homelab-stack/discussions)
+- Issues: [GitHub Issues](https://github.com/cph911/homelab-stack/issues)
+- Discussions: [GitHub Discussions](https://github.com/cph911/homelab-stack/discussions)
 
 -----
 
-**Built with ☕ for self-hosters who prefer working systems over demo setups.**
+Built with ☕ for self-hosters who prefer working systems over demo setups.
