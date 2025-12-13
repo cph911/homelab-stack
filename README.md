@@ -2,7 +2,7 @@
 
 Lean, production-ready home server installer for self-hosters who value simplicity over bloat.
 
-Deploy n8n automation, Jellyfin media streaming, and essential services with automated SSL certificates, resource limits, and proper monitoring. Built for real hardware constraints (16-32GB RAM), not fantasy cloud specs.
+Deploy n8n automation, Jellyfin media streaming, and essential services with automated SSL certificates, resource limits, and proper monitoring. Built for real hardware constraints (16-32GB RAM).
 
 
 > ⚠️ IMPORTANT DISCLAIMER
