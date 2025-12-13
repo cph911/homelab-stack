@@ -414,43 +414,7 @@ Options:
 
 -----
 
-## 🤝 Contributing
 
-Found a bug? Want to add a feature? PRs welcome!
-
-Before contributing:
-
-- Keep the “lean” philosophy (no bloat)
-- Add resource limits for new services
-- Test on actual hardware (not just local dev)
-- Update documentation
-
------
-
-## 📝 Comparison to Other Stacks
-
-### vs. Original AI-Stack
-
-|Feature        |This Stack     |AI-Stack           |
-|---------------|---------------|-------------------|
-|RAM Usage      |~7-8GB         |12-15GB+           |
-|Services       |4-6            |10+                |
-|Resource Limits|✅ Every service|❌ None             |
-|Media Streaming|✅ Jellyfin     |❌ None             |
-|Shared Database|❌ Isolated     |⚠️ Shared PostgreSQL|
-|Target Audience|Home servers   |AI workloads       |
-
-### vs. Manual Docker Setup
-
-|Feature        |This Stack      |Manual           |
-|---------------|----------------|-----------------|
-|Setup Time     |10-15 min       |2-4 hours        |
-|SSL Automation |✅ Automatic     |⚠️ Manual         |
-|Resource Limits|✅ Configured    |⚠️ Often forgotten|
-|Security       |✅ Auto-generated|⚠️ Manual config  |
-|Updates        |Simple          |Complex          |
-
------
 
 ## ⚠️ Important Notes
 
@@ -481,25 +445,10 @@ Before contributing:
 
 -----
 
-## 📄 License
-
-MIT License - Do whatever you want with it.
-
------
-
 ## 🙏 Credits
 
 Created for [hameed.tech](https://hameed.tech) - A practical home server setup for self-hosters who value working solutions over complexity.
 
-Inspired by [makhatib/AI-stack](https://github.com/makhatib/AI-stack) but stripped down to essentials and optimized for real hardware constraints.
+Inspired by [makhatib/AI-stack](https://github.com/makhatib/AI-stack) but stripped down to essentials and optimized for  hardware constraints.
 
 -----
-
-## 💬 Support
-
-- Issues: [GitHub Issues](https://github.com/cph911/homelab-stack/issues)
-- Discussions: [GitHub Discussions](https://github.com/cph911/homelab-stack/discussions)
-
------
-
-Built with ☕ for self-hosters who prefer working systems over demo setups.
