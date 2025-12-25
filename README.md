@@ -173,16 +173,36 @@ The installer creates these directories in your homelab-stack folder:
 - `jellyfin-media/music/` → mounted at `/media/music` in Jellyfin
 
 **Option A: Copy with cp:**
+
+Copy movies:
 ```bash
 cp -r /path/to/your/movies/* jellyfin-media/movies/
+```
+
+Copy TV shows:
+```bash
 cp -r /path/to/your/tv/* jellyfin-media/tv/
+```
+
+Copy music:
+```bash
 cp -r /path/to/your/music/* jellyfin-media/music/
 ```
 
 **Option B: Use rsync for large transfers:**
+
+Sync movies:
 ```bash
 rsync -avh --progress /path/to/your/movies/ jellyfin-media/movies/
+```
+
+Sync TV shows:
+```bash
 rsync -avh --progress /path/to/your/tv/ jellyfin-media/tv/
+```
+
+Sync music:
+```bash
 rsync -avh --progress /path/to/your/music/ jellyfin-media/music/
 ```
 
@@ -223,9 +243,13 @@ After adding media files:
 docker compose logs -f
 ```
 
-**View specific service logs:**
+**View n8n logs:**
 ```bash
 docker compose logs -f n8n
+```
+
+**View Jellyfin logs:**
+```bash
 docker compose logs -f jellyfin
 ```
 
@@ -379,9 +403,13 @@ docker compose logs --tail=100
 sudo netstat -tulpn | grep -E ':80|:443'
 ```
 
-**Restart Docker daemon and services:**
+**Restart Docker daemon:**
 ```bash
 sudo systemctl restart docker
+```
+
+**Start services:**
+```bash
 docker compose up -d
 ```
 
@@ -477,9 +505,19 @@ docker stats --no-stream --format "table {{.Name}}\t{{.MemUsage}}"
 ```
 
 **Temporary fix: Add swap space (4GB):**
+
+Create swap file:
 ```bash
 sudo dd if=/dev/zero of=/swapfile bs=1M count=4096
+```
+
+Format as swap:
+```bash
 sudo mkswap /swapfile
+```
+
+Enable swap:
+```bash
 sudo swapon /swapfile
 ```
 
