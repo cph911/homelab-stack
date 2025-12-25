@@ -223,7 +223,102 @@ case ${TZ_CHOICE:-5} in
 esac
 print_success "Timezone: $GENERIC_TIMEZONE"
 
-print_header "Step 3: Optional Services"
+print_header "Step 3: Resource Limit Configuration"
+
+# Detect system RAM
+TOTAL_RAM=$(free -g | awk '/^Mem:/{print $2}')
+
+echo -e "Detected System RAM: ${GREEN}${TOTAL_RAM}GB${NC}"
+echo ""
+echo "How much RAM does your server have?"
+echo ""
+echo "1) 16-32GB  - Conservative limits (~4.5GB for base stack)"
+echo "2) 32-48GB  - Moderate limits (~7.5GB for base stack)"
+echo "3) 48-64GB  - Relaxed limits (~13GB for base stack)"
+echo "4) 64GB+    - Minimal limits (~22GB for base stack)"
+echo ""
+read -p "$(echo -e "${CYAN}Select profile [1-4]: ${NC}")" RAM_PROFILE
+
+# Validate input
+while [[ ! "$RAM_PROFILE" =~ ^[1-4]$ ]]; do
+  echo -e "${RED}Invalid selection. Please choose 1, 2, 3, or 4.${NC}"
+  read -p "$(echo -e "${CYAN}Select profile [1-4]: ${NC}")" RAM_PROFILE
+done
+
+# Set resource limits based on profile
+case $RAM_PROFILE in
+  1)
+    # Conservative (16-32GB)
+    PROFILE_NAME="Conservative"
+    TRAEFIK_MEM="256M"
+    TRAEFIK_CPU="0.5"
+    POSTGRES_MEM="512M"
+    POSTGRES_CPU="1.0"
+    N8N_MEM="1G"
+    N8N_CPU="1.0"
+    JELLYFIN_MEM="2G"
+    JELLYFIN_CPU="2.0"
+    PORTAINER_MEM="256M"
+    PORTAINER_CPU="0.5"
+    UPTIME_MEM="512M"
+    UPTIME_CPU="0.5"
+    ;;
+  2)
+    # Moderate (32-48GB)
+    PROFILE_NAME="Moderate"
+    TRAEFIK_MEM="512M"
+    TRAEFIK_CPU="0.5"
+    POSTGRES_MEM="1G"
+    POSTGRES_CPU="1.0"
+    N8N_MEM="2G"
+    N8N_CPU="2.0"
+    JELLYFIN_MEM="4G"
+    JELLYFIN_CPU="3.0"
+    PORTAINER_MEM="512M"
+    PORTAINER_CPU="0.5"
+    UPTIME_MEM="512M"
+    UPTIME_CPU="0.5"
+    ;;
+  3)
+    # Relaxed (48-64GB)
+    PROFILE_NAME="Relaxed"
+    TRAEFIK_MEM="1G"
+    TRAEFIK_CPU="1.0"
+    POSTGRES_MEM="2G"
+    POSTGRES_CPU="2.0"
+    N8N_MEM="4G"
+    N8N_CPU="3.0"
+    JELLYFIN_MEM="6G"
+    JELLYFIN_CPU="4.0"
+    PORTAINER_MEM="1G"
+    PORTAINER_CPU="0.5"
+    UPTIME_MEM="1G"
+    UPTIME_CPU="0.5"
+    ;;
+  4)
+    # Minimal (64GB+)
+    PROFILE_NAME="Minimal/No Limits"
+    TRAEFIK_MEM="2G"
+    TRAEFIK_CPU="1.5"
+    POSTGRES_MEM="4G"
+    POSTGRES_CPU="3.0"
+    N8N_MEM="8G"
+    N8N_CPU="4.0"
+    JELLYFIN_MEM="8G"
+    JELLYFIN_CPU="6.0"
+    PORTAINER_MEM="2G"
+    PORTAINER_CPU="1.0"
+    UPTIME_MEM="2G"
+    UPTIME_CPU="1.0"
+    ;;
+esac
+
+echo ""
+echo -e "${GREEN}Selected profile: $PROFILE_NAME${NC}"
+echo "Resource limits will be configured accordingly."
+echo ""
+
+print_header "Step 4: Optional Services"
 
 read -p "$(echo -e "${CYAN}Install Portainer? [Y/n]: ${NC}")" INSTALL_PORTAINER
 INSTALL_PORTAINER=$([[ ! "$INSTALL_PORTAINER" =~ ^[Nn]$ ]] && echo "true" || echo "false")
@@ -231,12 +326,12 @@ INSTALL_PORTAINER=$([[ ! "$INSTALL_PORTAINER" =~ ^[Nn]$ ]] && echo "true" || ech
 read -p "$(echo -e "${CYAN}Install Uptime Kuma? [Y/n]: ${NC}")" INSTALL_UPTIME
 INSTALL_UPTIME=$([[ ! "$INSTALL_UPTIME" =~ ^[Nn]$ ]] && echo "true" || echo "false")
 
-print_header "Step 4: Generating Keys"
+print_header "Step 5: Generating Keys"
 
 POSTGRES_PASSWORD=$(generate_secret 32)
 print_success "PostgreSQL password generated"
 
-print_header "Step 5: DNS Configuration"
+print_header "Step 6: DNS Configuration"
 
 echo ""
 print_warning "Configure these DNS records:"
@@ -296,7 +391,7 @@ if [[ "$DNS_FAILED" == "true" ]]; then
     print_warning "Continuing without DNS validation..."
 fi
 
-print_header "Step 6: Creating Configuration"
+print_header "Step 7: Creating Configuration"
 
 # We're already in the homelab-stack directory, no need to create subdirectory
 print_info "Working directory: $(pwd)"
@@ -332,8 +427,8 @@ services:
     deploy:
       resources:
         limits:
-          memory: 256M
-          cpus: '0.5'
+          memory: ${TRAEFIK_MEM}
+          cpus: '${TRAEFIK_CPU}'
 
   postgres:
     image: postgres:16-alpine
@@ -350,8 +445,8 @@ services:
     deploy:
       resources:
         limits:
-          memory: 512M
-          cpus: '1.0'
+          memory: ${POSTGRES_MEM}
+          cpus: '${POSTGRES_CPU}'
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U n8n"]
       interval: 10s
@@ -386,8 +481,8 @@ services:
     deploy:
       resources:
         limits:
-          memory: 2G
-          cpus: '2.0'
+          memory: ${N8N_MEM}
+          cpus: '${N8N_CPU}'
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.n8n.rule=Host(`n8n.${DOMAIN_NAME}`)"
@@ -415,8 +510,8 @@ services:
     deploy:
       resources:
         limits:
-          memory: 4G
-          cpus: '2.0'
+          memory: ${JELLYFIN_MEM}
+          cpus: '${JELLYFIN_CPU}'
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.jellyfin.rule=Host(`jellyfin.${DOMAIN_NAME}`)"
@@ -442,8 +537,8 @@ if [[ "$INSTALL_PORTAINER" == "true" ]]; then
     deploy:
       resources:
         limits:
-          memory: 256M
-          cpus: '0.5'
+          memory: ${PORTAINER_MEM}
+          cpus: '${PORTAINER_CPU}'
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.portainer.rule=Host(`portainer.${DOMAIN_NAME}`)"
@@ -468,8 +563,8 @@ if [[ "$INSTALL_UPTIME" == "true" ]]; then
     deploy:
       resources:
         limits:
-          memory: 512M
-          cpus: '0.5'
+          memory: ${UPTIME_MEM}
+          cpus: '${UPTIME_CPU}'
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.uptime.rule=Host(`uptime.${DOMAIN_NAME}`)"
@@ -509,16 +604,30 @@ DOMAIN_NAME=$DOMAIN_NAME
 SSL_EMAIL=$SSL_EMAIL
 GENERIC_TIMEZONE=$GENERIC_TIMEZONE
 POSTGRES_PASSWORD=$POSTGRES_PASSWORD
+
+# Resource Limits
+TRAEFIK_MEM=$TRAEFIK_MEM
+TRAEFIK_CPU=$TRAEFIK_CPU
+POSTGRES_MEM=$POSTGRES_MEM
+POSTGRES_CPU=$POSTGRES_CPU
+N8N_MEM=$N8N_MEM
+N8N_CPU=$N8N_CPU
+JELLYFIN_MEM=$JELLYFIN_MEM
+JELLYFIN_CPU=$JELLYFIN_CPU
+PORTAINER_MEM=$PORTAINER_MEM
+PORTAINER_CPU=$PORTAINER_CPU
+UPTIME_MEM=$UPTIME_MEM
+UPTIME_CPU=$UPTIME_CPU
 EOFENV
 
 chmod 600 .env
 print_success ".env created"
 
-print_header "Step 7: Creating Directories"
+print_header "Step 8: Creating Directories"
 mkdir -p jellyfin-media/{movies,tv,music}
 print_success "Media directories created"
 
-print_header "Step 8: Downloading Images"
+print_header "Step 9: Downloading Images"
 print_info "Downloading Docker images (this may take a few minutes)..."
 if ! retry_command "docker compose pull"; then
     print_error "Failed to download images after multiple attempts"
@@ -528,7 +637,7 @@ if ! retry_command "docker compose pull"; then
 fi
 print_success "Images downloaded"
 
-print_header "Step 9: Starting Services"
+print_header "Step 10: Starting Services"
 print_info "Starting all services..."
 if ! docker compose up -d; then
     print_error "Failed to start services"
@@ -540,7 +649,7 @@ print_info "Waiting 30 seconds for services to initialize..."
 sleep 30
 print_success "Services started"
 
-print_header "Step 10: Verification"
+print_header "Step 11: Verification"
 print_info "Checking service status..."
 docker compose ps
 
@@ -570,6 +679,7 @@ Installation Summary
 Installed: $(date)
 Domain: $DOMAIN_NAME
 Server IP: $SERVER_IP
+Resource Profile: $PROFILE_NAME
 
 Services:
 - n8n:       https://n8n.$DOMAIN_NAME
@@ -580,6 +690,14 @@ $( [[ "$INSTALL_UPTIME" == "true" ]] && echo "- Uptime:    https://uptime.$DOMAI
 PostgreSQL Credentials:
   User: n8n
   Password: $POSTGRES_PASSWORD
+
+Resource Limits ($PROFILE_NAME):
+  Traefik:   Memory: $TRAEFIK_MEM, CPU: $TRAEFIK_CPU
+  PostgreSQL: Memory: $POSTGRES_MEM, CPU: $POSTGRES_CPU
+  n8n:       Memory: $N8N_MEM, CPU: $N8N_CPU
+  Jellyfin:  Memory: $JELLYFIN_MEM, CPU: $JELLYFIN_CPU
+$( [[ "$INSTALL_PORTAINER" == "true" ]] && echo "  Portainer: Memory: $PORTAINER_MEM, CPU: $PORTAINER_CPU" )
+$( [[ "$INSTALL_UPTIME" == "true" ]] && echo "  Uptime:    Memory: $UPTIME_MEM, CPU: $UPTIME_CPU" )
 
 Important:
 1. All credentials are in the .env file (keep it secure!)
