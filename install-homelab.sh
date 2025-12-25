@@ -45,6 +45,75 @@ validate_email() {
     [[ $1 =~ ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]
 }
 
+check_dns() {
+    local subdomain=$1
+    local domain=$2
+    print_info "Checking DNS for $subdomain.$domain..."
+
+    if command_exists nslookup; then
+        if nslookup "$subdomain.$domain" >/dev/null 2>&1; then
+            print_success "DNS resolves for $subdomain.$domain"
+            return 0
+        else
+            return 1
+        fi
+    elif command_exists dig; then
+        if dig +short "$subdomain.$domain" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' >/dev/null; then
+            print_success "DNS resolves for $subdomain.$domain"
+            return 0
+        else
+            return 1
+        fi
+    elif command_exists host; then
+        if host "$subdomain.$domain" >/dev/null 2>&1; then
+            print_success "DNS resolves for $subdomain.$domain"
+            return 0
+        else
+            return 1
+        fi
+    else
+        print_warning "No DNS tools available (nslookup/dig/host). Skipping DNS validation."
+        return 0
+    fi
+}
+
+cleanup_installation() {
+    print_warning "Cleaning up failed installation..."
+
+    if [ -f "docker-compose.yml" ]; then
+        docker compose down -v 2>/dev/null || true
+        print_info "Stopped and removed containers/volumes"
+    fi
+
+    rm -f docker-compose.yml .env INSTALLATION_INFO.txt
+    print_info "Removed configuration files"
+
+    print_success "Cleanup complete. You can re-run the installer."
+}
+
+retry_command() {
+    local max_attempts=4
+    local attempt=1
+    local delay=2
+    local command="$@"
+
+    while [ $attempt -le $max_attempts ]; do
+        if eval "$command"; then
+            return 0
+        else
+            if [ $attempt -lt $max_attempts ]; then
+                print_warning "Attempt $attempt failed. Retrying in ${delay}s..."
+                sleep $delay
+                delay=$((delay * 2))
+                attempt=$((attempt + 1))
+            else
+                print_error "Command failed after $max_attempts attempts"
+                return 1
+            fi
+        fi
+    done
+}
+
 clear
 cat << "EOF"
 ╔═══════════════════════════════════════════════════════════╗
@@ -184,12 +253,53 @@ if [[ ! "$DNS_CONFIRMED" =~ ^[Yy]$ ]]; then
     exit 0
 fi
 
+# Validate DNS
+echo ""
+print_info "Validating DNS records..."
+DNS_FAILED=false
+
+if ! check_dns "n8n" "$DOMAIN_NAME"; then
+    print_error "DNS not resolving for n8n.$DOMAIN_NAME"
+    DNS_FAILED=true
+fi
+
+if ! check_dns "jellyfin" "$DOMAIN_NAME"; then
+    print_error "DNS not resolving for jellyfin.$DOMAIN_NAME"
+    DNS_FAILED=true
+fi
+
+if [[ "$INSTALL_PORTAINER" == "true" ]]; then
+    if ! check_dns "portainer" "$DOMAIN_NAME"; then
+        print_error "DNS not resolving for portainer.$DOMAIN_NAME"
+        DNS_FAILED=true
+    fi
+fi
+
+if [[ "$INSTALL_UPTIME" == "true" ]]; then
+    if ! check_dns "uptime" "$DOMAIN_NAME"; then
+        print_error "DNS not resolving for uptime.$DOMAIN_NAME"
+        DNS_FAILED=true
+    fi
+fi
+
+if [[ "$DNS_FAILED" == "true" ]]; then
+    echo ""
+    print_error "DNS validation failed. Please configure DNS properly and wait for propagation."
+    print_info "You can check DNS with: nslookup n8n.$DOMAIN_NAME"
+    print_info "DNS propagation can take 5-60 minutes."
+    echo ""
+    read -p "$(echo -e "${YELLOW}Continue anyway? [y/N]: ${NC}")" FORCE_CONTINUE
+    if [[ ! "$FORCE_CONTINUE" =~ ^[Yy]$ ]]; then
+        print_warning "Exiting. Please configure DNS and re-run."
+        exit 0
+    fi
+    print_warning "Continuing without DNS validation..."
+fi
+
 print_header "Step 6: Creating Configuration"
 
-DEPLOY_DIR="homelab-stack"
-mkdir -p "$DEPLOY_DIR"
-cd "$DEPLOY_DIR"
-
+# We're already in the homelab-stack directory, no need to create subdirectory
+print_info "Working directory: $(pwd)"
 print_info "Creating docker-compose.yml..."
 
 cat > docker-compose.yml << 'EOFCOMPOSE'
@@ -295,6 +405,11 @@ services:
     volumes:
       - jellyfin_config:/config
       - jellyfin_cache:/cache
+      - ./jellyfin-media/movies:/media/movies:ro
+      - ./jellyfin-media/tv:/media/tv:ro
+      - ./jellyfin-media/music:/media/music:ro
+    devices:
+      - /dev/dri:/dev/dri
     networks:
       - homelab
     deploy:
@@ -404,19 +519,78 @@ mkdir -p jellyfin-media/{movies,tv,music}
 print_success "Media directories created"
 
 print_header "Step 8: Downloading Images"
-docker compose pull
+print_info "Downloading Docker images (this may take a few minutes)..."
+if ! retry_command "docker compose pull"; then
+    print_error "Failed to download images after multiple attempts"
+    print_info "Check your internet connection and Docker Hub rate limits"
+    cleanup_installation
+    exit 1
+fi
 print_success "Images downloaded"
 
 print_header "Step 9: Starting Services"
-docker compose up -d
-print_info "Waiting 30 seconds..."
+print_info "Starting all services..."
+if ! docker compose up -d; then
+    print_error "Failed to start services"
+    print_info "Check logs with: docker compose logs"
+    cleanup_installation
+    exit 1
+fi
+print_info "Waiting 30 seconds for services to initialize..."
 sleep 30
 print_success "Services started"
 
 print_header "Step 10: Verification"
+print_info "Checking service status..."
 docker compose ps
 
+# Check if critical services are running
+CRITICAL_SERVICES="traefik postgres n8n jellyfin"
+FAILED_SERVICES=""
+
+for service in $CRITICAL_SERVICES; do
+    if ! docker compose ps | grep -q "$service.*running"; then
+        FAILED_SERVICES="$FAILED_SERVICES $service"
+    fi
+done
+
+if [ -n "$FAILED_SERVICES" ]; then
+    print_error "Critical services not running:$FAILED_SERVICES"
+    print_info "Check logs with: docker compose logs <service-name>"
+    print_warning "Installation may be incomplete"
+else
+    print_success "All critical services are running"
+fi
+
 print_header "🎉 Installation Complete!"
+
+cat > INSTALLATION_INFO.txt << EOFINST
+Installation Summary
+===================
+Installed: $(date)
+Domain: $DOMAIN_NAME
+Server IP: $SERVER_IP
+
+Services:
+- n8n:       https://n8n.$DOMAIN_NAME
+- Jellyfin:  https://jellyfin.$DOMAIN_NAME
+$( [[ "$INSTALL_PORTAINER" == "true" ]] && echo "- Portainer: https://portainer.$DOMAIN_NAME" )
+$( [[ "$INSTALL_UPTIME" == "true" ]] && echo "- Uptime:    https://uptime.$DOMAIN_NAME" )
+
+PostgreSQL Credentials:
+  User: n8n
+  Password: $POSTGRES_PASSWORD
+
+Important:
+1. All credentials are in the .env file (keep it secure!)
+2. Traefik dashboard: http://$SERVER_IP:8080 (INSECURE - restrict access!)
+3. SSL certificates may take 2-5 minutes to generate
+4. Media files go in: jellyfin-media/movies, jellyfin-media/tv, jellyfin-media/music
+
+Backup your .env file immediately!
+EOFINST
+
+chmod 600 INSTALLATION_INFO.txt
 
 echo ""
 echo -e "${GREEN}Your Services:${NC}"
@@ -425,17 +599,17 @@ echo -e "  • Jellyfin: https://jellyfin.$DOMAIN_NAME"
 [[ "$INSTALL_PORTAINER" == "true" ]] && echo -e "  • Portainer: https://portainer.$DOMAIN_NAME"
 [[ "$INSTALL_UPTIME" == "true" ]] && echo -e "  • Uptime: https://uptime.$DOMAIN_NAME"
 echo ""
-echo -e "${CYAN}PostgreSQL Credentials (in .env):${NC}"
-echo "  User: n8n"
-echo "  Password: $POSTGRES_PASSWORD"
+echo -e "${YELLOW}⚠️  Important:${NC}"
+echo -e "  • All credentials saved in: ${BOLD}INSTALLATION_INFO.txt${NC}"
+echo -e "  • PostgreSQL password also in: ${BOLD}.env${NC}"
+echo -e "  • Traefik dashboard at: ${BOLD}http://$SERVER_IP:8080${NC} (INSECURE!)"
 echo ""
-
-cat > INSTALLATION_INFO.txt << EOFINST
-Installed: $(date)
-Domain: $DOMAIN_NAME
-Server IP: $SERVER_IP
-PostgreSQL Password: $POSTGRES_PASSWORD
-EOFINST
-
-print_success "Done!"
+echo -e "${CYAN}Next Steps:${NC}"
+echo "1. View credentials: cat INSTALLATION_INFO.txt"
+echo "2. Add media files to: jellyfin-media/movies, jellyfin-media/tv, jellyfin-media/music"
+echo "3. Secure Traefik dashboard: sudo ufw allow from YOUR_IP to any port 8080"
+echo "4. Set up backups (see README.md)"
+echo "5. Wait 2-5 minutes for SSL certificates to generate"
+echo ""
+print_success "Installation complete! Check logs with: docker compose logs -f"
 exit 0
