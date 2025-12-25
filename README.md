@@ -6,12 +6,15 @@ Deploy n8n automation, Jellyfin media streaming, and essential services with aut
 
 
 > ⚠️ IMPORTANT DISCLAIMER
-> 
-> This installer is NOT TESTED YET and is currently for personal experimentation only. 
-> 
-> Full credit goes to [Mahmoud Alkhatib](https://github.com/makhatib) for creating the [original AI-stack project](https://github.com/makhatib/AI-stack). I simply modified his excellent work to fit my specific use case by removing services I don't need and adding resource limits.
-> 
-> Use at your own risk. Test in a non-production environment first.
+>
+> This installer has been reviewed and improved with bug fixes, DNS validation, error handling, and beginner-friendly features.
+>
+> Full credit goes to [Mahmoud Alkhatib](https://github.com/makhatib) for creating the [original AI-stack project](https://github.com/makhatib/AI-stack). This is a modified version optimized for homelab use with resource limits and essential services only.
+>
+> **Recommendations:**
+> - Test in a non-production environment first
+> - Ensure you have proper backups before deploying to production
+> - Review the security section and secure the Traefik dashboard immediately after installation
 
 -----
 
@@ -82,12 +85,24 @@ chmod +x install-homelab.sh
 
 The installer will:
 
-1. Check prerequisites (Docker, DNS, etc.)
-1. Ask for your domain and configuration
+1. Check prerequisites (Docker, Docker Compose, OpenSSL)
+1. Ask for your domain and email configuration
+1. Let you choose optional services (Portainer, Uptime Kuma)
 1. Generate secure random passwords
-1. Create Docker Compose configuration
-1. Pull images and start services
+1. **Validate DNS records** (with option to continue anyway)
+1. Create Docker Compose configuration with media mounts
+1. Pull images with automatic retry on failure
+1. Start services with verification checks
 1. Set up SSL certificates automatically
+
+**New Features:**
+- ✅ Automatic DNS validation before installation
+- ✅ Error recovery with exponential backoff retry
+- ✅ Service health verification after startup
+- ✅ Jellyfin media directories auto-mounted
+- ✅ Hardware acceleration for Jellyfin (GPU support)
+- ✅ Cleanup function for failed installations
+- ✅ Secure credential handling (not printed to terminal)
 
 Total time: 10-15 minutes
 
@@ -144,30 +159,50 @@ homelab-stack/
 
 ## 🎬 Adding Media to Jellyfin
 
-### Option 1: Use Included Directories
+The installer automatically creates and mounts media directories. Media is mounted read-only for safety.
+
+### Option 1: Use Included Directories (Recommended)
+
+The installer creates these directories in your homelab-stack folder:
+- `jellyfin-media/movies/` → mounted at `/media/movies` in Jellyfin
+- `jellyfin-media/tv/` → mounted at `/media/tv` in Jellyfin
+- `jellyfin-media/music/` → mounted at `/media/music` in Jellyfin
 
 ```bash
 # Copy media to the included directories
-cp -r /path/to/your/movies/ jellyfin-media/movies/
-cp -r /path/to/your/tv/ jellyfin-media/tv/
+cp -r /path/to/your/movies/* jellyfin-media/movies/
+cp -r /path/to/your/tv/* jellyfin-media/tv/
+cp -r /path/to/your/music/* jellyfin-media/music/
+
+# Or use rsync for large transfers
+rsync -avh --progress /path/to/your/movies/ jellyfin-media/movies/
 ```
 
 ### Option 2: Mount Your Own Directories
 
-Edit `docker-compose.yml` and uncomment/modify the volume mounts:
+If you have existing media on another drive, edit `docker-compose.yml`:
 
 ```yaml
 jellyfin:
   volumes:
     - jellyfin_config:/config
     - jellyfin_cache:/cache
-    # Add your media paths:
+    # Replace the default paths with your own:
     - /mnt/storage/movies:/media/movies:ro
     - /mnt/storage/tv:/media/tv:ro
     - /mnt/storage/music:/media/music:ro
 ```
 
 Then restart: `docker compose restart jellyfin`
+
+### Setting Up Libraries in Jellyfin
+
+After adding media files:
+1. Visit `https://jellyfin.yourdomain.com`
+2. Go to Dashboard → Libraries → Add Media Library
+3. Select library type (Movies, TV Shows, Music)
+4. Add folder: `/media/movies`, `/media/tv`, or `/media/music`
+5. Configure metadata settings and save
 
 -----
 
@@ -263,8 +298,8 @@ docker run --rm \
   alpine tar czf /backup/n8n-data-$DATE.tar.gz -C /data .
 
 # Keep only last 7 days
-find $BACKUP_DIR -name ".sql" -mtime +7 -delete
-find $BACKUP_DIR -name ".tar.gz" -mtime +7 -delete
+find $BACKUP_DIR -name "*.sql" -mtime +7 -delete
+find $BACKUP_DIR -name "*.tar.gz" -mtime +7 -delete
 
 echo "Backup completed: $DATE"
 ```
@@ -275,7 +310,7 @@ Add to crontab (`crontab -e`):
 
 ```bash
 # Daily backup at 2 AM
-0 2    /root/homelab-backup.sh >> /var/log/homelab-backup.log 2>&1
+0 2 * * * /root/homelab-backup.sh >> /var/log/homelab-backup.log 2>&1
 ```
 
 ### Restore from Backup
@@ -343,16 +378,31 @@ docker compose exec postgres psql -U n8n -d n8n
 
 ### Jellyfin Transcoding Issues
 
+The installer automatically configures hardware acceleration (`/dev/dri` device) for Intel/AMD GPUs.
+
 ```bash
+# Check if hardware acceleration is available
+docker compose exec jellyfin ls -la /dev/dri
+
 # Check available resources
 docker stats jellyfin
 
-# Increase Jellyfin memory limit in docker-compose.yml
+# If you need more memory, increase limit in docker-compose.yml
 # Change: memory: 4G  →  memory: 6G
 
 # Restart Jellyfin
 docker compose restart jellyfin
 ```
+
+**Enable Hardware Acceleration in Jellyfin:**
+1. Go to Dashboard → Playback
+2. Select hardware acceleration type:
+   - **VA-API** for Intel/AMD on Linux
+   - **Video Acceleration API** for Intel Quick Sync
+3. Enable hardware decoding for H264, HEVC, etc.
+4. Save and test transcoding
+
+**Note:** If `/dev/dri` doesn't exist, your system doesn't have GPU drivers installed or doesn't support hardware transcoding. Jellyfin will fall back to CPU transcoding (slower).
 
 ### Out of Memory
 
