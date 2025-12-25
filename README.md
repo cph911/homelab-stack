@@ -71,15 +71,19 @@ Why resource limits matter: Without them, one runaway process can kill your enti
 
 ### Installation
 
+**Step 1: Clone the repository**
 ```bash
-# Clone the repository
 git clone https://github.com/cph911/homelab-stack.git
 cd homelab-stack
+```
 
-# Make the installer executable
+**Step 2: Make the installer executable**
+```bash
 chmod +x install-homelab.sh
+```
 
-# Run the installer
+**Step 3: Run the installer**
+```bash
 ./install-homelab.sh
 ```
 
