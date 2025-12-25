@@ -172,14 +172,38 @@ The installer creates these directories in your homelab-stack folder:
 - `jellyfin-media/tv/` → mounted at `/media/tv` in Jellyfin
 - `jellyfin-media/music/` → mounted at `/media/music` in Jellyfin
 
-```bash
-# Copy media to the included directories
-cp -r /path/to/your/movies/* jellyfin-media/movies/
-cp -r /path/to/your/tv/* jellyfin-media/tv/
-cp -r /path/to/your/music/* jellyfin-media/music/
+**Option A: Copy with cp:**
 
-# Or use rsync for large transfers
+Copy movies:
+```bash
+cp -r /path/to/your/movies/* jellyfin-media/movies/
+```
+
+Copy TV shows:
+```bash
+cp -r /path/to/your/tv/* jellyfin-media/tv/
+```
+
+Copy music:
+```bash
+cp -r /path/to/your/music/* jellyfin-media/music/
+```
+
+**Option B: Use rsync for large transfers:**
+
+Sync movies:
+```bash
 rsync -avh --progress /path/to/your/movies/ jellyfin-media/movies/
+```
+
+Sync TV shows:
+```bash
+rsync -avh --progress /path/to/your/tv/ jellyfin-media/tv/
+```
+
+Sync music:
+```bash
+rsync -avh --progress /path/to/your/music/ jellyfin-media/music/
 ```
 
 ### Option 2: Mount Your Own Directories
@@ -214,43 +238,65 @@ After adding media files:
 
 ### Service Control
 
+**View all logs:**
 ```bash
-# View all logs
 docker compose logs -f
+```
 
-# View specific service logs
+**View n8n logs:**
+```bash
 docker compose logs -f n8n
+```
+
+**View Jellyfin logs:**
+```bash
 docker compose logs -f jellyfin
+```
 
-# Restart all services
+**Restart all services:**
+```bash
 docker compose restart
+```
 
-# Restart specific service
+**Restart specific service:**
+```bash
 docker compose restart n8n
+```
 
-# Stop all services
+**Stop all services:**
+```bash
 docker compose down
+```
 
-# Start all services
+**Start all services:**
+```bash
 docker compose up -d
+```
 
-# Check service status
+**Check service status:**
+```bash
 docker compose ps
+```
 
-# View resource usage
+**View resource usage:**
+```bash
 docker stats
 ```
 
 ### Updates
 
+**Step 1: Pull latest images**
 ```bash
-# Pull latest images
 docker compose pull
+```
 
-# Recreate containers with new images
+**Step 2: Recreate containers with new images**
+```bash
 docker compose up -d
+```
 
-# Check logs for any issues
+**Step 3: Check logs for any issues**
+```bash
 docker compose logs -f
 ```
 
@@ -260,15 +306,19 @@ docker compose logs -f
 
 ### Quick Backup
 
+**Backup configuration files:**
 ```bash
-# Backup configuration files
 tar czf backup-config-$(date +%Y%m%d).tar.gz \
   docker-compose.yml .env INSTALLATION_INFO.txt
+```
 
-# Backup PostgreSQL database
+**Backup PostgreSQL database:**
+```bash
 docker compose exec postgres pg_dump -U n8n n8n > backup-n8n-$(date +%Y%m%d).sql
+```
 
-# Backup Docker volumes (n8n data)
+**Backup Docker volumes (n8n data):**
+```bash
 docker run --rm \
   -v homelab-stack_n8n_data:/data \
   -v $(pwd):/backup \
@@ -319,14 +369,18 @@ Add to crontab (`crontab -e`):
 
 ### Restore from Backup
 
+**Restore configuration:**
 ```bash
-# Restore configuration
 tar xzf backup-config-YYYYMMDD.tar.gz
+```
 
-# Restore database
+**Restore database:**
+```bash
 cat backup-n8n-YYYYMMDD.sql | docker compose exec -T postgres psql -U n8n n8n
+```
 
-# Restore n8n data
+**Restore n8n data:**
+```bash
 docker run --rm \
   -v homelab-stack_n8n_data:/data \
   -v $(pwd):/backup \
@@ -337,46 +391,66 @@ docker run --rm \
 
 ## 🔥 Troubleshooting
 
-### Services Won’t Start
+### Services Won't Start
 
+**Check logs for errors:**
 ```bash
-# Check logs for errors
 docker compose logs --tail=100
+```
 
-# Check if ports are already in use
+**Check if ports are already in use:**
+```bash
 sudo netstat -tulpn | grep -E ':80|:443'
+```
 
-# Restart Docker daemon
+**Restart Docker daemon:**
+```bash
 sudo systemctl restart docker
+```
+
+**Start services:**
+```bash
 docker compose up -d
 ```
 
 ### SSL Certificates Not Generating
 
+**Check Traefik logs:**
 ```bash
-# Check Traefik logs
 docker compose logs traefik
-
-# Verify DNS is propagated
-nslookup n8n.yourdomain.com
-
-# Check certificate status
-curl -I https://n8n.yourdomain.com
-
-# Wait 5-10 minutes - Let's Encrypt can be slow
 ```
+
+**Verify DNS is propagated:**
+```bash
+nslookup n8n.yourdomain.com
+```
+
+**Check certificate status:**
+```bash
+curl -I https://n8n.yourdomain.com
+```
+
+**Note:** Wait 5-10 minutes - Let's Encrypt can be slow to issue certificates.
 
 ### n8n Database Connection Issues
 
+**Check PostgreSQL is healthy:**
 ```bash
-# Check PostgreSQL is healthy
 docker compose ps postgres
+```
 
-# Check PostgreSQL logs
+**Check PostgreSQL logs:**
+```bash
 docker compose logs postgres
+```
 
-# Verify credentials match
+**Verify credentials:**
+```bash
 cat .env | grep POSTGRES_PASSWORD
+```
+
+**Test database connection:**
+```bash
 docker compose exec postgres psql -U n8n -d n8n
 ```
 
@@ -384,17 +458,22 @@ docker compose exec postgres psql -U n8n -d n8n
 
 The installer automatically configures hardware acceleration (`/dev/dri` device) for Intel/AMD GPUs.
 
+**Check if hardware acceleration is available:**
 ```bash
-# Check if hardware acceleration is available
 docker compose exec jellyfin ls -la /dev/dri
+```
 
-# Check available resources
+**Check available resources:**
+```bash
 docker stats jellyfin
+```
 
-# If you need more memory, increase limit in docker-compose.yml
-# Change: memory: 4G  →  memory: 6G
+**Increase memory limit if needed:**
 
-# Restart Jellyfin
+Edit `docker-compose.yml` and change: `memory: 4G` → `memory: 6G`
+
+**Restart Jellyfin:**
+```bash
 docker compose restart jellyfin
 ```
 
@@ -410,17 +489,35 @@ docker compose restart jellyfin
 
 ### Out of Memory
 
+**Check memory usage:**
 ```bash
-# Check memory usage
 free -h
+```
+
+**Monitor Docker container resources:**
+```bash
 docker stats
+```
 
-# Identify memory hog
+**Identify memory hog:**
+```bash
 docker stats --no-stream --format "table {{.Name}}\t{{.MemUsage}}"
+```
 
-# Temporary: Add swap space
+**Temporary fix: Add swap space (4GB):**
+
+Create swap file:
+```bash
 sudo dd if=/dev/zero of=/swapfile bs=1M count=4096
+```
+
+Format as swap:
+```bash
 sudo mkswap /swapfile
+```
+
+Enable swap:
+```bash
 sudo swapon /swapfile
 ```
 
