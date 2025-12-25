@@ -1,6 +1,6 @@
 # 🏠 Homelab Stack
 
-Lean, production-ready home server installer for self-hosters who value simplicity over bloat.
+Lean, home server installer for self-hosters who value simplicity over bloat.
 
 Deploy n8n automation, Jellyfin media streaming, and essential services with automated SSL certificates, resource limits, and proper monitoring. Built for real hardware constraints (16-32GB RAM).
 
