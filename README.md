@@ -172,14 +172,18 @@ The installer creates these directories in your homelab-stack folder:
 - `jellyfin-media/tv/` → mounted at `/media/tv` in Jellyfin
 - `jellyfin-media/music/` → mounted at `/media/music` in Jellyfin
 
+**Option A: Copy with cp:**
 ```bash
-# Copy media to the included directories
 cp -r /path/to/your/movies/* jellyfin-media/movies/
 cp -r /path/to/your/tv/* jellyfin-media/tv/
 cp -r /path/to/your/music/* jellyfin-media/music/
+```
 
-# Or use rsync for large transfers
+**Option B: Use rsync for large transfers:**
+```bash
 rsync -avh --progress /path/to/your/movies/ jellyfin-media/movies/
+rsync -avh --progress /path/to/your/tv/ jellyfin-media/tv/
+rsync -avh --progress /path/to/your/music/ jellyfin-media/music/
 ```
 
 ### Option 2: Mount Your Own Directories
@@ -214,30 +218,44 @@ After adding media files:
 
 ### Service Control
 
+**View all logs:**
 ```bash
-# View all logs
 docker compose logs -f
+```
 
-# View specific service logs
+**View specific service logs:**
+```bash
 docker compose logs -f n8n
 docker compose logs -f jellyfin
+```
 
-# Restart all services
+**Restart all services:**
+```bash
 docker compose restart
+```
 
-# Restart specific service
+**Restart specific service:**
+```bash
 docker compose restart n8n
+```
 
-# Stop all services
+**Stop all services:**
+```bash
 docker compose down
+```
 
-# Start all services
+**Start all services:**
+```bash
 docker compose up -d
+```
 
-# Check service status
+**Check service status:**
+```bash
 docker compose ps
+```
 
-# View resource usage
+**View resource usage:**
+```bash
 docker stats
 ```
 
@@ -412,17 +430,22 @@ docker compose exec postgres psql -U n8n -d n8n
 
 The installer automatically configures hardware acceleration (`/dev/dri` device) for Intel/AMD GPUs.
 
+**Check if hardware acceleration is available:**
 ```bash
-# Check if hardware acceleration is available
 docker compose exec jellyfin ls -la /dev/dri
+```
 
-# Check available resources
+**Check available resources:**
+```bash
 docker stats jellyfin
+```
 
-# If you need more memory, increase limit in docker-compose.yml
-# Change: memory: 4G  →  memory: 6G
+**Increase memory limit if needed:**
 
-# Restart Jellyfin
+Edit `docker-compose.yml` and change: `memory: 4G` → `memory: 6G`
+
+**Restart Jellyfin:**
+```bash
 docker compose restart jellyfin
 ```
 
