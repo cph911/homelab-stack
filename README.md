@@ -515,14 +515,20 @@ Edit `.env` file and adjust the Jellyfin memory limit:
 ```bash
 # Change from current value to higher value
 JELLYFIN_MEM=6G
+JELLYFIN_CPU=4.0
 ```
 
-Or edit `docker-compose.yml` directly and change: `memory: ${JELLYFIN_MEM}` → `memory: 6G`
+**Apply changes:**
+```bash
+docker compose up -d
+```
 
-**Restart Jellyfin:**
+Or restart just Jellyfin:
 ```bash
 docker compose restart jellyfin
 ```
+
+**Note:** You can adjust limits for any service using this same method. See "Adjusting Resource Limits" section below for all services.
 
 **Enable Hardware Acceleration in Jellyfin:**
 1. Go to Dashboard → Playback
@@ -545,15 +551,51 @@ Edit the `.env` file and adjust the limits:
 nano .env
 ```
 
-Change the resource variables:
+Change the resource variables for any service:
 ```bash
-# Example: Increase n8n memory from 2G to 4G
+# Traefik (reverse proxy)
+TRAEFIK_MEM=512M
+TRAEFIK_CPU=1.0
+
+# PostgreSQL (database)
+POSTGRES_MEM=1G
+POSTGRES_CPU=2.0
+
+# n8n (automation)
 N8N_MEM=4G
 N8N_CPU=3.0
 
-# Example: Increase Jellyfin memory from 4G to 6G
+# Jellyfin (media streaming)
 JELLYFIN_MEM=6G
 JELLYFIN_CPU=4.0
+
+# Portainer (container management) - if installed
+PORTAINER_MEM=512M
+PORTAINER_CPU=1.0
+
+# Uptime Kuma (monitoring) - if installed
+UPTIME_MEM=1G
+UPTIME_CPU=1.0
+```
+
+**Common scenarios:**
+
+Increase n8n for heavy workflows:
+```bash
+N8N_MEM=8G
+N8N_CPU=4.0
+```
+
+Increase Jellyfin for 4K transcoding:
+```bash
+JELLYFIN_MEM=8G
+JELLYFIN_CPU=6.0
+```
+
+Increase PostgreSQL for large databases:
+```bash
+POSTGRES_MEM=2G
+POSTGRES_CPU=2.0
 ```
 
 **Option 2: Switch to different profile**
