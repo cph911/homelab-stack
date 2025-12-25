@@ -2,7 +2,7 @@
 
 Lean, quick and easy home server installer for self-hosters who value simplicity over bloat.
 
-Deploy n8n automation, Jellyfin media streaming, and essential services with automated SSL certificates, resource limits, and proper monitoring. Built for real hardware constraints (16-32GB RAM).
+Deploy n8n automation, Jellyfin media streaming, and essential services with automated SSL certificates, dynamic resource limits, and proper monitoring. Supports multiple server configurations (16GB to 64GB+ RAM) with intelligent resource allocation.
 
 
 > ⚠️ IMPORTANT DISCLAIMER
@@ -44,18 +44,57 @@ Deploy n8n automation, Jellyfin media streaming, and essential services with aut
 
 ## 📊 Resource Usage
 
-Total RAM: ~7-8GB (leaves headroom on 16GB servers)
+The installer now supports **dynamic resource limits** based on your server's RAM capacity. Choose the profile that matches your hardware:
+
+### Profile 1: Conservative (16-32GB servers)
+Total RAM: ~4.5GB (leaves plenty of headroom)
 
 |Service    |RAM Limit|CPU Limit|Purpose        |
 |-----------|---------|---------|---------------|
 |Traefik    |256MB    |0.5 CPU  |SSL & routing  |
 |PostgreSQL |512MB    |1.0 CPU  |Database       |
-|n8n        |2GB      |2.0 CPU  |Automation     |
-|Jellyfin   |4GB      |2.0 CPU  |Media streaming|
+|n8n        |1GB      |1.0 CPU  |Automation     |
+|Jellyfin   |2GB      |2.0 CPU  |Media streaming|
 |Portainer  |256MB    |0.5 CPU  |Management     |
 |Uptime Kuma|512MB    |0.5 CPU  |Monitoring     |
 
-Why resource limits matter: Without them, one runaway process can kill your entire server. This is production-ready configuration, not a demo.
+### Profile 2: Moderate (32-48GB servers)
+Total RAM: ~7.5GB (balanced performance)
+
+|Service    |RAM Limit|CPU Limit|Purpose        |
+|-----------|---------|---------|---------------|
+|Traefik    |512MB    |0.5 CPU  |SSL & routing  |
+|PostgreSQL |1GB      |1.0 CPU  |Database       |
+|n8n        |2GB      |2.0 CPU  |Automation     |
+|Jellyfin   |4GB      |3.0 CPU  |Media streaming|
+|Portainer  |512MB    |0.5 CPU  |Management     |
+|Uptime Kuma|512MB    |0.5 CPU  |Monitoring     |
+
+### Profile 3: Relaxed (48-64GB servers)
+Total RAM: ~13GB (high performance)
+
+|Service    |RAM Limit|CPU Limit|Purpose        |
+|-----------|---------|---------|---------------|
+|Traefik    |1GB      |1.0 CPU  |SSL & routing  |
+|PostgreSQL |2GB      |2.0 CPU  |Database       |
+|n8n        |4GB      |3.0 CPU  |Automation     |
+|Jellyfin   |6GB      |4.0 CPU  |Media streaming|
+|Portainer  |1GB      |0.5 CPU  |Management     |
+|Uptime Kuma|1GB      |0.5 CPU  |Monitoring     |
+
+### Profile 4: Minimal Limits (64GB+ servers)
+Total RAM: ~22GB (maximum performance)
+
+|Service    |RAM Limit|CPU Limit|Purpose        |
+|-----------|---------|---------|---------------|
+|Traefik    |2GB      |1.5 CPU  |SSL & routing  |
+|PostgreSQL |4GB      |3.0 CPU  |Database       |
+|n8n        |8GB      |4.0 CPU  |Automation     |
+|Jellyfin   |8GB      |6.0 CPU  |Media streaming|
+|Portainer  |2GB      |1.0 CPU  |Management     |
+|Uptime Kuma|2GB      |1.0 CPU  |Monitoring     |
+
+**Why resource limits matter:** Without them, one runaway process can kill your entire server. This is production-ready configuration, not a demo. The installer automatically detects your RAM and recommends the appropriate profile.
 
 -----
 
@@ -64,7 +103,7 @@ Why resource limits matter: Without them, one runaway process can kill your enti
 ### Prerequisites
 
 - Ubuntu 20.04+ or Debian 11+ server
-- 16GB+ RAM (32GB recommended for heavy transcoding)
+- **16GB+ RAM** (installer supports 16GB to 64GB+ with adaptive resource profiles)
 - Docker 20.10+ and Docker Compose v2+
 - Domain name with DNS access
 - Ports 80, 443, 8080 available
@@ -91,6 +130,7 @@ The installer will:
 
 1. Check prerequisites (Docker, Docker Compose, OpenSSL)
 1. Ask for your domain and email configuration
+1. **Select resource profile** (detects RAM and offers 4 profiles)
 1. Let you choose optional services (Portainer, Uptime Kuma)
 1. Generate secure random passwords
 1. **Validate DNS records** (with option to continue anyway)
@@ -99,7 +139,8 @@ The installer will:
 1. Start services with verification checks
 1. Set up SSL certificates automatically
 
-**New Features:**
+**Key Features:**
+- ✅ **Dynamic resource limits** - Choose profile based on your RAM (16GB to 64GB+)
 - ✅ Automatic DNS validation before installation
 - ✅ Error recovery with exponential backoff retry
 - ✅ Service health verification after startup
@@ -150,8 +191,8 @@ After installation:
 homelab-stack/
 ├── install-homelab.sh          # Installer script
 ├── docker-compose.yml          # Generated service definitions
-├── .env                        # Generated credentials (DO NOT COMMIT)
-├── INSTALLATION_INFO.txt       # Installation summary
+├── .env                        # Generated credentials & resource limits (DO NOT COMMIT)
+├── INSTALLATION_INFO.txt       # Installation summary with resource profile
 ├── jellyfin-media/            # Media directories
 │   ├── movies/
 │   ├── tv/
@@ -470,7 +511,13 @@ docker stats jellyfin
 
 **Increase memory limit if needed:**
 
-Edit `docker-compose.yml` and change: `memory: 4G` → `memory: 6G`
+Edit `.env` file and adjust the Jellyfin memory limit:
+```bash
+# Change from current value to higher value
+JELLYFIN_MEM=6G
+```
+
+Or edit `docker-compose.yml` directly and change: `memory: ${JELLYFIN_MEM}` → `memory: 6G`
 
 **Restart Jellyfin:**
 ```bash
@@ -486,6 +533,39 @@ docker compose restart jellyfin
 4. Save and test transcoding
 
 **Note:** If `/dev/dri` doesn't exist, your system doesn't have GPU drivers installed or doesn't support hardware transcoding. Jellyfin will fall back to CPU transcoding (slower).
+
+### Adjusting Resource Limits
+
+If you need to change your resource profile after installation:
+
+**Option 1: Edit .env file (Recommended)**
+
+Edit the `.env` file and adjust the limits:
+```bash
+nano .env
+```
+
+Change the resource variables:
+```bash
+# Example: Increase n8n memory from 2G to 4G
+N8N_MEM=4G
+N8N_CPU=3.0
+
+# Example: Increase Jellyfin memory from 4G to 6G
+JELLYFIN_MEM=6G
+JELLYFIN_CPU=4.0
+```
+
+**Option 2: Switch to different profile**
+
+You can manually update all variables in `.env` to match a different profile (see Resource Usage section for all profiles).
+
+**Apply changes:**
+```bash
+docker compose up -d
+```
+
+This will recreate containers with new limits without data loss.
 
 ### Out of Memory
 
@@ -504,7 +584,11 @@ docker stats
 docker stats --no-stream --format "table {{.Name}}\t{{.MemUsage}}"
 ```
 
-**Temporary fix: Add swap space (4GB):**
+**Solution 1: Lower your resource profile**
+
+If containers are hitting limits, you may have selected a profile that's too high for your server. Edit `.env` and reduce the limits.
+
+**Solution 2: Add swap space (4GB):**
 
 Create swap file:
 ```bash
@@ -569,11 +653,13 @@ Options:
 
 ## ⚠️ Important Notes
 
-- SSL certificates take 2-5 minutes to generate - Be patient on first run
-- DNS must be configured BEFORE installation - Let’s Encrypt verifies ownership
-- Traefik dashboard (port 8080) is insecure - Restrict access immediately
-- Resource limits are mandatory - Don’t remove them “for performance”
-- Backups are your responsibility - Set them up on day one
+- **SSL certificates take 2-5 minutes to generate** - Be patient on first run
+- **DNS must be configured BEFORE installation** - Let's Encrypt verifies ownership
+- **Traefik dashboard (port 8080) is insecure** - Restrict access immediately
+- **Resource limits are mandatory** - Don't remove them "for performance"
+- **Choose the right resource profile** - Conservative for 16GB, Moderate for 32GB, Relaxed for 48GB, Minimal for 64GB+
+- **Resource limits can be adjusted** - Edit `.env` file and run `docker compose up -d`
+- **Backups are your responsibility** - Set them up on day one
 
 -----
 
