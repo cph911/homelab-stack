@@ -102,11 +102,88 @@ Total RAM: ~22GB (maximum performance)
 
 ### Prerequisites
 
+#### System Requirements
 - Ubuntu 20.04+ or Debian 11+ server
 - **16GB+ RAM** (installer supports 16GB to 64GB+ with adaptive resource profiles)
-- Docker 20.10+ and Docker Compose v2+
 - Domain name with DNS access
 - Ports 80, 443, 8080 available
+
+#### Required Tools
+
+Before running the installer, ensure you have these tools installed:
+
+**1. Essential Tools (git, curl, wget)**
+
+For Ubuntu/Debian:
+```bash
+sudo apt update
+sudo apt install -y git curl wget ca-certificates gnupg
+```
+
+**2. Docker 20.10+ and Docker Compose v2+**
+
+Install Docker:
+```bash
+# Install Docker using official script
+curl -fsSL https://get.docker.com | sh
+
+# Add your user to docker group (no sudo needed)
+sudo usermod -aG docker $USER
+
+# Apply group changes (logout/login or use newgrp)
+newgrp docker
+
+# Verify installation
+docker --version
+docker compose version
+```
+
+Or install manually if you prefer:
+```bash
+# Add Docker's official GPG key
+sudo install -m 0755 -d /etc/apt/keyrings
+wget -qO- https://download.docker.com/linux/debian/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+sudo chmod a+r /etc/apt/keyrings/docker.gpg
+
+# Add Docker repository
+echo \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian \
+  $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+# Install Docker
+sudo apt update
+sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+# Start Docker service
+sudo systemctl start docker
+sudo systemctl enable docker
+```
+
+**3. Optional Tools (helpful for troubleshooting)**
+
+```bash
+# DNS troubleshooting tools
+sudo apt install -y dnsutils
+
+# Network troubleshooting
+sudo apt install -y net-tools
+```
+
+**Verify all prerequisites:**
+```bash
+# Check if all tools are installed
+git --version
+curl --version
+docker --version
+docker compose version
+
+# Check available RAM
+free -h
+
+# Check open ports (should NOT show 80, 443, 8080 in use)
+sudo netstat -tulpn | grep -E ':80|:443|:8080'
+```
 
 ### Installation
 
@@ -157,16 +234,47 @@ Total time: 10-15 minutes
 
 CRITICAL: Configure DNS BEFORE running the installer.
 
-You need A records pointing to your server IP:
+### Find Your Server's Public IP
 
-```
-n8n.yourdomain.com        →  YOUR_SERVER_IP
-jellyfin.yourdomain.com   →  YOUR_SERVER_IP
-portainer.yourdomain.com  →  YOUR_SERVER_IP  (if installing)
-uptime.yourdomain.com     →  YOUR_SERVER_IP  (if installing)
+**For VPS/Cloud Servers:**
+```bash
+curl ifconfig.me
 ```
 
-Verify with: `nslookup n8n.yourdomain.com`
+**For Home Servers:**
+1. Find your public IP: Visit https://whatismyip.com from your browser
+2. **Configure port forwarding on your router** (required for home networks):
+   - Forward port **80** to your server's local IP (e.g., 192.168.1.100:80)
+   - Forward port **443** to your server's local IP (e.g., 192.168.1.100:443)
+   - Without port forwarding, Let's Encrypt SSL certificates will fail
+
+### Configure DNS Records
+
+You need A records pointing to your **public IP** (not local/private IPs like 192.168.x.x):
+
+```
+n8n.yourdomain.com        →  YOUR_PUBLIC_IP
+jellyfin.yourdomain.com   →  YOUR_PUBLIC_IP
+portainer.yourdomain.com  →  YOUR_PUBLIC_IP  (if installing)
+uptime.yourdomain.com     →  YOUR_PUBLIC_IP  (if installing)
+```
+
+**Important for Cloudflare Users:**
+- Turn OFF the orange cloud (Proxied status) - must be gray (DNS only)
+- Let's Encrypt needs direct access to verify domain ownership
+- Traefik handles SSL, not Cloudflare proxy
+
+**Verify DNS propagation:**
+```bash
+# Install dig if needed
+sudo apt install -y dnsutils
+
+# Check DNS resolution
+dig n8n.yourdomain.com +short
+nslookup n8n.yourdomain.com
+```
+
+Wait 1-5 minutes for DNS to propagate before running the installer.
 
 -----
 
