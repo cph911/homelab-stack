@@ -20,31 +20,70 @@ Monitor and manage your Docker containers remotely via Telegram. Check container
 
 ---
 
-## 🚀 Quick Setup
+## 🚀 Quick Setup (Automated Installer)
+
+The easiest way to install the bot is using the automated installer script.
 
 ### Step 1: Create Telegram Bot
 
 1. Open Telegram and search for [@BotFather](https://t.me/botfather)
 2. Send `/newbot` command
 3. Follow prompts to set bot name and username
-4. Save the **bot token** (looks like `1234567890:ABCdefGHIjklMNOpqrsTUVwxyz`)
+4. **Copy the bot token** (looks like `1234567890:ABCdefGHIjklMNOpqrsTUVwxyz`)
 
 ### Step 2: Get Your Telegram User ID
 
 1. Search for [@userinfobot](https://t.me/userinfobot) in Telegram
 2. Send `/start` command
-3. Save your **user ID** (numeric, e.g., `123456789`)
+3. **Copy your user ID** (numeric, e.g., `123456789`)
 
-### Step 3: Install Python Dependencies
+### Step 3: Run the Installer
 
-SSH into your server and install the required library:
+SSH into your server and run:
+
+```bash
+cd ~/homelab-stack
+./install-telegram-bot.sh
+```
+
+The installer will:
+- ✅ Check prerequisites (Docker, Python3, python3-telebot)
+- ✅ Install missing dependencies (with your permission)
+- ✅ Prompt for your bot token and user ID
+- ✅ Validate credentials format
+- ✅ Create bot script with your credentials
+- ✅ Set up systemd service for 24/7 operation
+- ✅ Start the bot automatically
+- ✅ Verify everything is working
+
+**That's it!** Just paste your credentials when prompted and the script handles everything else.
+
+---
+
+## 📱 Testing Your Bot
+
+After installation completes:
+
+1. Open Telegram and search for your bot
+2. Send `/start` to begin
+3. Type `/` to see all available commands
+4. Try `/health` to see container status
+5. Try `/restart` to see the interactive menu
+
+---
+
+## 🔧 Manual Installation (Advanced)
+
+If you prefer to install manually or want to understand what the installer does, follow these steps:
+
+### Step 1: Install Dependencies
 
 ```bash
 sudo apt update
 sudo apt install -y python3-telebot
 ```
 
-### Step 4: Create Bot Script
+### Step 2: Create Bot Script
 
 Create the bot directory:
 
@@ -274,7 +313,7 @@ Make the script executable:
 chmod +x bot.py
 ```
 
-### Step 5: Test the Bot Manually (Optional)
+### Step 3: Test the Bot Manually (Optional)
 
 Before setting up the service, test that it works:
 
@@ -286,7 +325,7 @@ Open Telegram, search for your bot, and send `/health`. You should see a contain
 
 Press `Ctrl+C` to stop the test.
 
-### Step 6: Create systemd Service
+### Step 4: Create systemd Service
 
 Create the service file:
 
@@ -319,7 +358,7 @@ WantedBy=multi-user.target
 
 Save and exit (`Ctrl+X`, then `Y`, then `Enter`).
 
-### Step 7: Enable and Start Service
+### Step 5: Enable and Start Service
 
 Reload systemd to recognize the new service:
 
