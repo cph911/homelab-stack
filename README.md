@@ -14,7 +14,7 @@ Deploy n8n automation, Jellyfin media streaming, and essential services with aut
 > **Recommendations:**
 > - Test in a non-production environment first
 > - Ensure you have proper backups before deploying to production
-> - Review the security section and secure the Traefik dashboard immediately after installation
+> - Review the security section and configure Cosmos properly after installation
 
 -----
 
@@ -22,15 +22,21 @@ Deploy n8n automation, Jellyfin media streaming, and essential services with aut
 
 ### Core Services (Always Installed)
 
-- n8n - Workflow automation platform (400+ integrations)
-- Jellyfin - Media streaming server (your personal Netflix)
-- Traefik - Reverse proxy with automatic SSL certificates
-- PostgreSQL - Database backend for n8n
+- **Cosmos** - Modern reverse proxy with user-friendly web UI and SSL
+- **n8n** - Workflow automation platform (400+ integrations)
+- **Jellyfin** - Media streaming server (your personal Netflix)
+- **PostgreSQL** - Database backend for n8n
 
 ### Optional Services (You Choose)
 
-- Portainer - Visual Docker container management
-- Uptime Kuma - Service monitoring with alerts
+- **Portainer** - Visual Docker container management
+- **Uptime Kuma** - Service monitoring with alerts
+
+### Advanced Optional Services
+
+- **Pi-hole** - Network-wide ad blocking and DNS management
+- **Tailscale** - Private VPN for remote access (ideal for CG-NAT/no static IP)
+- **Cloudflare Tunnel** - Public domain access alternative
 
 ### Optional Features (Post-Installation)
 
@@ -61,7 +67,7 @@ Total RAM: ~4.5GB (leaves plenty of headroom)
 
 |Service    |RAM Limit|CPU Limit|Purpose        |
 |-----------|---------|---------|---------------|
-|Traefik    |256MB    |0.5 CPU  |SSL & routing  |
+|Cosmos     |512M     |1.0 CPU  |Reverse proxy  |
 |PostgreSQL |512MB    |1.0 CPU  |Database       |
 |n8n        |1GB      |1.0 CPU  |Automation     |
 |Jellyfin   |2GB      |2.0 CPU  |Media streaming|
@@ -73,7 +79,7 @@ Total RAM: ~7.5GB (balanced performance)
 
 |Service    |RAM Limit|CPU Limit|Purpose        |
 |-----------|---------|---------|---------------|
-|Traefik    |512MB    |0.5 CPU  |SSL & routing  |
+|Cosmos     |1G       |1.5 CPU  |Reverse proxy  |
 |PostgreSQL |1GB      |1.0 CPU  |Database       |
 |n8n        |2GB      |2.0 CPU  |Automation     |
 |Jellyfin   |4GB      |3.0 CPU  |Media streaming|
@@ -85,7 +91,7 @@ Total RAM: ~13GB (high performance)
 
 |Service    |RAM Limit|CPU Limit|Purpose        |
 |-----------|---------|---------|---------------|
-|Traefik    |1GB      |1.0 CPU  |SSL & routing  |
+|Cosmos     |2G       |2.0 CPU  |Reverse proxy  |
 |PostgreSQL |2GB      |2.0 CPU  |Database       |
 |n8n        |4GB      |3.0 CPU  |Automation     |
 |Jellyfin   |6GB      |4.0 CPU  |Media streaming|
@@ -97,7 +103,7 @@ Total RAM: ~22GB (maximum performance)
 
 |Service    |RAM Limit|CPU Limit|Purpose        |
 |-----------|---------|---------|---------------|
-|Traefik    |2GB      |1.5 CPU  |SSL & routing  |
+|Cosmos     |4G       |3.0 CPU  |Reverse proxy  |
 |PostgreSQL |4GB      |3.0 CPU  |Database       |
 |n8n        |8GB      |4.0 CPU  |Automation     |
 |Jellyfin   |8GB      |6.0 CPU  |Media streaming|
@@ -115,8 +121,8 @@ Total RAM: ~22GB (maximum performance)
 #### System Requirements
 - Ubuntu 20.04+ or Debian 11+ server
 - **16GB+ RAM** (installer supports 16GB to 64GB+ with adaptive resource profiles)
-- Domain name with DNS access
-- Ports 80, 443, 8080 available
+- Domain name (for local /etc/hosts setup or with Tailscale/Cloudflare for remote access)
+- Ports 80, 443 available (for Cosmos reverse proxy)
 
 #### Required Tools
 
@@ -269,10 +275,11 @@ portainer.yourdomain.com  →  YOUR_PUBLIC_IP  (if installing)
 uptime.yourdomain.com     →  YOUR_PUBLIC_IP  (if installing)
 ```
 
-**Important for Cloudflare Users:**
-- Turn OFF the orange cloud (Proxied status) - must be gray (DNS only)
-- Let's Encrypt needs direct access to verify domain ownership
-- Traefik handles SSL, not Cloudflare proxy
+**Important Notes:**
+- **For local access only**: No public DNS needed - use /etc/hosts file
+- **For Tailscale VPN**: No public DNS needed - access via VPN
+- **For Cloudflare Tunnel**: Follow the Cloudflare Tunnel setup guide
+- **For Let's Encrypt (if using public domain)**: Turn OFF Cloudflare proxy - Cosmos needs direct access
 
 **Verify DNS propagation:**
 ```bash
@@ -574,9 +581,9 @@ docker compose up -d
 
 ### SSL Certificates Not Generating
 
-**Check Traefik logs:**
+**Check Cosmos logs:**
 ```bash
-docker compose logs traefik
+docker compose logs cosmos
 ```
 
 **Verify DNS is propagated:**
@@ -749,15 +756,20 @@ sudo swapon /swapfile
 - Set up notification channels (email, Slack, etc.)
 - Configure status page
 
-### 4. Secure Traefik Dashboard
+### 4. Configure Cosmos Reverse Proxy
 
-The Traefik dashboard runs on port 8080 without authentication.
+Complete the Cosmos setup to add routes for your services:
 
-Options:
+1. Access Cosmos at `http://YOUR_SERVER_IP` or `https://cosmos.yourdomain.com`
+2. Complete the initial setup wizard
+3. Set your hostname (e.g., `cosmos.yourdomain.com`)
+4. Configure SSL certificates (self-signed for local access)
+5. Add service routes:
+   - n8n → Container: `n8n`, Port: `5678`, Host: `n8n.yourdomain.com`
+   - Jellyfin → Container: `jellyfin`, Port: `8096`, Host: `jellyfin.yourdomain.com`
+   - (Add routes for Portainer, Uptime Kuma, Pi-hole if installed)
 
-1. Firewall it: `sudo ufw allow from YOUR_HOME_IP to any port 8080`
-1. Disable it: Remove `--api.dashboard=true` from docker-compose.yml
-1. Add basic auth (advanced)
+See `docs/COSMOS_SETUP.md` for detailed configuration guide.
 
 ### 5. Optional: Set Up Telegram Health Bot
 
@@ -795,7 +807,7 @@ See the [Telegram Bot Setup Guide](docs/TELEGRAM_BOT.md) for detailed instructio
 
 - **SSL certificates take 2-5 minutes to generate** - Be patient on first run
 - **DNS must be configured BEFORE installation** - Let's Encrypt verifies ownership
-- **Traefik dashboard (port 8080) is insecure** - Restrict access immediately
+- **Cosmos runs on ports 80/443** - Complete the setup wizard and configure service routes
 - **Resource limits are mandatory** - Don't remove them "for performance"
 - **Choose the right resource profile** - Conservative for 16GB, Moderate for 32GB, Relaxed for 48GB, Minimal for 64GB+
 - **Resource limits can be adjusted** - Edit `.env` file and run `docker compose up -d`
@@ -809,7 +821,7 @@ See the [Telegram Bot Setup Guide](docs/TELEGRAM_BOT.md) for detailed instructio
 
 - [n8n Documentation](https://docs.n8n.io)
 - [Jellyfin Documentation](https://jellyfin.org/docs/)
-- [Traefik Documentation](https://doc.traefik.io/traefik/)
+- [Cosmos Server Documentation](https://cosmos-cloud.io/doc)
 - [Portainer Documentation](https://docs.portainer.io/)
 - [Uptime Kuma Documentation](https://github.com/louislam/uptime-kuma/wiki)
 

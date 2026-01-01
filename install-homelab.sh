@@ -2,8 +2,8 @@
 
 ################################################################################
 # Home Server Stack - Lean Installer
-# Core: n8n, Jellyfin, Traefik, PostgreSQL
-# Optional: Portainer, Uptime Kuma
+# Core: n8n, Jellyfin, Cosmos, PostgreSQL
+# Optional: Portainer, Uptime Kuma, Pi-hole, Tailscale, Cloudflare Tunnel
 ################################################################################
 
 set -e
@@ -43,38 +43,6 @@ validate_domain() {
 
 validate_email() {
     [[ $1 =~ ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]
-}
-
-check_dns() {
-    local subdomain=$1
-    local domain=$2
-    print_info "Checking DNS for $subdomain.$domain..."
-
-    if command_exists nslookup; then
-        if nslookup "$subdomain.$domain" >/dev/null 2>&1; then
-            print_success "DNS resolves for $subdomain.$domain"
-            return 0
-        else
-            return 1
-        fi
-    elif command_exists dig; then
-        if dig +short "$subdomain.$domain" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' >/dev/null; then
-            print_success "DNS resolves for $subdomain.$domain"
-            return 0
-        else
-            return 1
-        fi
-    elif command_exists host; then
-        if host "$subdomain.$domain" >/dev/null 2>&1; then
-            print_success "DNS resolves for $subdomain.$domain"
-            return 0
-        else
-            return 1
-        fi
-    else
-        print_warning "No DNS tools available (nslookup/dig/host). Skipping DNS validation."
-        return 0
-    fi
 }
 
 cleanup_installation() {
@@ -121,7 +89,7 @@ cat << "EOF"
 ║          🏠 Home Server Stack - Lean Installer            ║
 ║                                                           ║
 ║  Core Services:                                          ║
-║  ✓ Traefik - Reverse Proxy with SSL                     ║
+║  ✓ Cosmos - Reverse Proxy with SSL                      ║
 ║  ✓ n8n - Workflow Automation                            ║
 ║  ✓ Jellyfin - Media Streaming                           ║
 ║  ✓ PostgreSQL - Database                                ║
@@ -129,6 +97,8 @@ cat << "EOF"
 ║  Optional:                                               ║
 ║  ⭐ Portainer - Container Management                     ║
 ║  ⭐ Uptime Kuma - Monitoring                             ║
+║  ⭐ Pi-hole - DNS Ad Blocking (Advanced)                ║
+║  ⭐ Tailscale - VPN Remote Access (Advanced)            ║
 ╚═══════════════════════════════════════════════════════════╝
 EOF
 
@@ -176,7 +146,7 @@ else
     exit 1
 fi
 
-SERVER_IP=$(curl -s ifconfig.me 2>/dev/null || echo "Unable to detect")
+SERVER_IP=$(hostname -I | awk '{print $1}' 2>/dev/null || echo "Unable to detect")
 print_info "Server IP: $SERVER_IP"
 sleep 2
 
@@ -189,16 +159,6 @@ while true; do
         break
     else
         print_error "Invalid domain"
-    fi
-done
-
-while true; do
-    read -p "$(echo -e "${CYAN}SSL email for Let's Encrypt: ${NC}")" SSL_EMAIL
-    if validate_email "$SSL_EMAIL"; then
-        print_success "Email: $SSL_EMAIL"
-        break
-    else
-        print_error "Invalid email"
     fi
 done
 
@@ -250,8 +210,8 @@ case $RAM_PROFILE in
   1)
     # Conservative (16-32GB)
     PROFILE_NAME="Conservative"
-    TRAEFIK_MEM="256M"
-    TRAEFIK_CPU="0.5"
+    COSMOS_MEM="512M"
+    COSMOS_CPU="1.0"
     POSTGRES_MEM="512M"
     POSTGRES_CPU="1.0"
     N8N_MEM="1G"
@@ -262,12 +222,14 @@ case $RAM_PROFILE in
     PORTAINER_CPU="0.5"
     UPTIME_MEM="512M"
     UPTIME_CPU="0.5"
+    PIHOLE_MEM="512M"
+    PIHOLE_CPU="0.5"
     ;;
   2)
     # Moderate (32-48GB)
     PROFILE_NAME="Moderate"
-    TRAEFIK_MEM="512M"
-    TRAEFIK_CPU="0.5"
+    COSMOS_MEM="1G"
+    COSMOS_CPU="1.5"
     POSTGRES_MEM="1G"
     POSTGRES_CPU="1.0"
     N8N_MEM="2G"
@@ -278,12 +240,14 @@ case $RAM_PROFILE in
     PORTAINER_CPU="0.5"
     UPTIME_MEM="512M"
     UPTIME_CPU="0.5"
+    PIHOLE_MEM="512M"
+    PIHOLE_CPU="0.5"
     ;;
   3)
     # Relaxed (48-64GB)
     PROFILE_NAME="Relaxed"
-    TRAEFIK_MEM="1G"
-    TRAEFIK_CPU="1.0"
+    COSMOS_MEM="2G"
+    COSMOS_CPU="2.0"
     POSTGRES_MEM="2G"
     POSTGRES_CPU="2.0"
     N8N_MEM="4G"
@@ -294,12 +258,14 @@ case $RAM_PROFILE in
     PORTAINER_CPU="0.5"
     UPTIME_MEM="1G"
     UPTIME_CPU="0.5"
+    PIHOLE_MEM="1G"
+    PIHOLE_CPU="0.5"
     ;;
   4)
     # Minimal (64GB+)
     PROFILE_NAME="Minimal/No Limits"
-    TRAEFIK_MEM="2G"
-    TRAEFIK_CPU="1.5"
+    COSMOS_MEM="4G"
+    COSMOS_CPU="3.0"
     POSTGRES_MEM="4G"
     POSTGRES_CPU="3.0"
     N8N_MEM="8G"
@@ -310,6 +276,8 @@ case $RAM_PROFILE in
     PORTAINER_CPU="1.0"
     UPTIME_MEM="2G"
     UPTIME_CPU="1.0"
+    PIHOLE_MEM="2G"
+    PIHOLE_CPU="1.0"
     ;;
 esac
 
@@ -326,70 +294,82 @@ INSTALL_PORTAINER=$([[ ! "$INSTALL_PORTAINER" =~ ^[Nn]$ ]] && echo "true" || ech
 read -p "$(echo -e "${CYAN}Install Uptime Kuma? [Y/n]: ${NC}")" INSTALL_UPTIME
 INSTALL_UPTIME=$([[ ! "$INSTALL_UPTIME" =~ ^[Nn]$ ]] && echo "true" || echo "false")
 
-print_header "Step 5: Generating Keys"
+echo ""
+print_info "Advanced Services (DNS ad-blocking)"
+read -p "$(echo -e "${CYAN}Install Pi-hole? [y/N]: ${NC}")" INSTALL_PIHOLE
+INSTALL_PIHOLE=$([[ "$INSTALL_PIHOLE" =~ ^[Yy]$ ]] && echo "true" || echo "false")
+
+if [[ "$INSTALL_PIHOLE" == "true" ]]; then
+    while true; do
+        read -s -p "$(echo -e "${CYAN}Set Pi-hole admin password: ${NC}")" PIHOLE_PASSWORD
+        echo ""
+        read -s -p "$(echo -e "${CYAN}Confirm password: ${NC}")" PIHOLE_PASSWORD_CONFIRM
+        echo ""
+        if [ "$PIHOLE_PASSWORD" == "$PIHOLE_PASSWORD_CONFIRM" ]; then
+            print_success "Pi-hole password set"
+            break
+        else
+            print_error "Passwords do not match. Try again."
+        fi
+    done
+fi
+
+print_header "Step 5: Remote Access Configuration"
+
+echo ""
+print_info "Do you need to access your services remotely (outside your local network)?"
+echo ""
+read -p "$(echo -e "${CYAN}Enable remote access? [y/N]: ${NC}")" ENABLE_REMOTE
+ENABLE_REMOTE=$([[ "$ENABLE_REMOTE" =~ ^[Yy]$ ]] && echo "true" || echo "false")
+
+REMOTE_METHOD="none"
+if [[ "$ENABLE_REMOTE" == "true" ]]; then
+    echo ""
+    print_info "Choose remote access method:"
+    echo ""
+    echo "1) Tailscale VPN (Recommended for CG-NAT/No Static IP)"
+    echo "   ✓ No public exposure"
+    echo "   ✓ Works without static IP"
+    echo "   ✓ Private VPN tunnel"
+    echo ""
+    echo "2) Cloudflare Tunnel (For public domains)"
+    echo "   ✓ Public domain access"
+    echo "   ✓ Real SSL certificates"
+    echo "   ⚠ Services publicly exposed"
+    echo ""
+    read -p "$(echo -e "${CYAN}Choice [1-2]: ${NC}")" REMOTE_CHOICE
+
+    case ${REMOTE_CHOICE:-1} in
+        1)
+            REMOTE_METHOD="tailscale"
+            print_info "Tailscale will be configured after installation"
+            print_info "See docs/TAILSCALE_SETUP.md for setup guide"
+            ;;
+        2)
+            REMOTE_METHOD="cloudflare"
+            print_info "Cloudflare Tunnel will be configured after installation"
+            print_info "See docs/CLOUDFLARE_TUNNEL.md for setup guide"
+            while true; do
+                read -p "$(echo -e "${CYAN}SSL email for Let's Encrypt: ${NC}")" SSL_EMAIL
+                if validate_email "$SSL_EMAIL"; then
+                    print_success "Email: $SSL_EMAIL"
+                    break
+                else
+                    print_error "Invalid email"
+                fi
+            done
+            ;;
+        *)
+            REMOTE_METHOD="tailscale"
+            print_warning "Invalid choice. Defaulting to Tailscale."
+            ;;
+    esac
+fi
+
+print_header "Step 6: Generating Keys"
 
 POSTGRES_PASSWORD=$(generate_secret 32)
 print_success "PostgreSQL password generated"
-
-print_header "Step 6: DNS Configuration"
-
-echo ""
-print_warning "Configure these DNS records:"
-echo ""
-echo "  n8n.$DOMAIN_NAME           →  $SERVER_IP"
-echo "  jellyfin.$DOMAIN_NAME      →  $SERVER_IP"
-[[ "$INSTALL_PORTAINER" == "true" ]] && echo "  portainer.$DOMAIN_NAME     →  $SERVER_IP"
-[[ "$INSTALL_UPTIME" == "true" ]] && echo "  uptime.$DOMAIN_NAME        →  $SERVER_IP"
-echo ""
-
-read -p "$(echo -e "${YELLOW}DNS configured? [y/N]: ${NC}")" DNS_CONFIRMED
-if [[ ! "$DNS_CONFIRMED" =~ ^[Yy]$ ]]; then
-    print_warning "Configure DNS first, then re-run."
-    exit 0
-fi
-
-# Validate DNS
-echo ""
-print_info "Validating DNS records..."
-DNS_FAILED=false
-
-if ! check_dns "n8n" "$DOMAIN_NAME"; then
-    print_error "DNS not resolving for n8n.$DOMAIN_NAME"
-    DNS_FAILED=true
-fi
-
-if ! check_dns "jellyfin" "$DOMAIN_NAME"; then
-    print_error "DNS not resolving for jellyfin.$DOMAIN_NAME"
-    DNS_FAILED=true
-fi
-
-if [[ "$INSTALL_PORTAINER" == "true" ]]; then
-    if ! check_dns "portainer" "$DOMAIN_NAME"; then
-        print_error "DNS not resolving for portainer.$DOMAIN_NAME"
-        DNS_FAILED=true
-    fi
-fi
-
-if [[ "$INSTALL_UPTIME" == "true" ]]; then
-    if ! check_dns "uptime" "$DOMAIN_NAME"; then
-        print_error "DNS not resolving for uptime.$DOMAIN_NAME"
-        DNS_FAILED=true
-    fi
-fi
-
-if [[ "$DNS_FAILED" == "true" ]]; then
-    echo ""
-    print_error "DNS validation failed. Please configure DNS properly and wait for propagation."
-    print_info "You can check DNS with: nslookup n8n.$DOMAIN_NAME"
-    print_info "DNS propagation can take 5-60 minutes."
-    echo ""
-    read -p "$(echo -e "${YELLOW}Continue anyway? [y/N]: ${NC}")" FORCE_CONTINUE
-    if [[ ! "$FORCE_CONTINUE" =~ ^[Yy]$ ]]; then
-        print_warning "Exiting. Please configure DNS and re-run."
-        exit 0
-    fi
-    print_warning "Continuing without DNS validation..."
-fi
 
 print_header "Step 7: Creating Configuration"
 
@@ -399,36 +379,19 @@ print_info "Creating docker-compose.yml..."
 
 cat > docker-compose.yml << 'EOFCOMPOSE'
 services:
-  traefik:
-    image: traefik:v3.0
-    container_name: traefik
-    restart: unless-stopped
-    command:
-      - "--api.dashboard=true"
-      - "--providers.docker=true"
-      - "--providers.docker.exposedbydefault=false"
-      - "--entrypoints.web.address=:80"
-      - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
-      - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
-      - "--entrypoints.websecure.address=:443"
-      - "--certificatesresolvers.letsencrypt.acme.tlschallenge=true"
-      - "--certificatesresolvers.letsencrypt.acme.email=${SSL_EMAIL}"
-      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
-      - "--log.level=INFO"
-    ports:
-      - "80:80"
-      - "443:443"
-      - "8080:8080"
+  cosmos:
+    image: azukaar/cosmos-server:latest
+    container_name: cosmos
+    restart: always
+    privileged: true
+    network_mode: host
     volumes:
-      - traefik_certs:/letsencrypt
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    networks:
-      - homelab
-    deploy:
-      resources:
-        limits:
-          memory: ${TRAEFIK_MEM}
-          cpus: '${TRAEFIK_CPU}'
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./cosmos-config:/var/lib/cosmos
+      - /:/mnt/host:rslave
+    environment:
+      - COSMOS_HOSTNAME=${DOMAIN_NAME}
+      - COSMOS_SERVER_HOSTNAME=cosmos.${DOMAIN_NAME}
 
   postgres:
     image: postgres:16-alpine
@@ -457,6 +420,8 @@ services:
     image: docker.n8n.io/n8nio/n8n:latest
     container_name: n8n
     restart: unless-stopped
+    ports:
+      - "5678:5678"
     environment:
       - N8N_HOST=n8n.${DOMAIN_NAME}
       - N8N_PORT=5678
@@ -483,18 +448,13 @@ services:
         limits:
           memory: ${N8N_MEM}
           cpus: '${N8N_CPU}'
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.n8n.rule=Host(`n8n.${DOMAIN_NAME}`)"
-      - "traefik.http.routers.n8n.tls=true"
-      - "traefik.http.routers.n8n.entrypoints=websecure"
-      - "traefik.http.routers.n8n.tls.certresolver=letsencrypt"
-      - "traefik.http.services.n8n.loadbalancer.server.port=5678"
 
   jellyfin:
     image: jellyfin/jellyfin:latest
     container_name: jellyfin
     restart: unless-stopped
+    ports:
+      - "8096:8096"
     environment:
       - TZ=${GENERIC_TIMEZONE}
     volumes:
@@ -512,13 +472,6 @@ services:
         limits:
           memory: ${JELLYFIN_MEM}
           cpus: '${JELLYFIN_CPU}'
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.jellyfin.rule=Host(`jellyfin.${DOMAIN_NAME}`)"
-      - "traefik.http.routers.jellyfin.tls=true"
-      - "traefik.http.routers.jellyfin.entrypoints=websecure"
-      - "traefik.http.routers.jellyfin.tls.certresolver=letsencrypt"
-      - "traefik.http.services.jellyfin.loadbalancer.server.port=8096"
 EOFCOMPOSE
 
 if [[ "$INSTALL_PORTAINER" == "true" ]]; then
@@ -528,6 +481,8 @@ if [[ "$INSTALL_PORTAINER" == "true" ]]; then
     image: portainer/portainer-ce:latest
     container_name: portainer
     restart: unless-stopped
+    ports:
+      - "9000:9000"
     command: -H unix:///var/run/docker.sock
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
@@ -539,13 +494,6 @@ if [[ "$INSTALL_PORTAINER" == "true" ]]; then
         limits:
           memory: ${PORTAINER_MEM}
           cpus: '${PORTAINER_CPU}'
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.portainer.rule=Host(`portainer.${DOMAIN_NAME}`)"
-      - "traefik.http.routers.portainer.tls=true"
-      - "traefik.http.routers.portainer.entrypoints=websecure"
-      - "traefik.http.routers.portainer.tls.certresolver=letsencrypt"
-      - "traefik.http.services.portainer.loadbalancer.server.port=9000"
 EOFPORTAINER
 fi
 
@@ -556,6 +504,8 @@ if [[ "$INSTALL_UPTIME" == "true" ]]; then
     image: louislam/uptime-kuma:1
     container_name: uptime-kuma
     restart: unless-stopped
+    ports:
+      - "3001:3001"
     volumes:
       - uptime_kuma_data:/app/data
     networks:
@@ -565,20 +515,41 @@ if [[ "$INSTALL_UPTIME" == "true" ]]; then
         limits:
           memory: ${UPTIME_MEM}
           cpus: '${UPTIME_CPU}'
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.uptime.rule=Host(`uptime.${DOMAIN_NAME}`)"
-      - "traefik.http.routers.uptime.tls=true"
-      - "traefik.http.routers.uptime.entrypoints=websecure"
-      - "traefik.http.routers.uptime.tls.certresolver=letsencrypt"
-      - "traefik.http.services.uptime.loadbalancer.server.port=3001"
 EOFUPTIME
+fi
+
+if [[ "$INSTALL_PIHOLE" == "true" ]]; then
+    cat >> docker-compose.yml << EOFPIHOLE
+
+  pihole:
+    image: pihole/pihole:latest
+    container_name: pihole
+    restart: unless-stopped
+    environment:
+      - TZ=${GENERIC_TIMEZONE}
+      - WEBPASSWORD=${PIHOLE_PASSWORD}
+      - FTLCONF_LOCAL_IPV4=${SERVER_IP}
+      - DNSMASQ_LISTENING=all
+    ports:
+      - "53:53/tcp"
+      - "53:53/udp"
+      - "8053:80"
+    volumes:
+      - pihole_config:/etc/pihole
+      - pihole_dnsmasq:/etc/dnsmasq.d
+    networks:
+      - homelab
+    deploy:
+      resources:
+        limits:
+          memory: ${PIHOLE_MEM}
+          cpus: '${PIHOLE_CPU}'
+EOFPIHOLE
 fi
 
 cat >> docker-compose.yml << 'EOFVOLUMES'
 
 volumes:
-  traefik_certs:
   postgres_data:
   n8n_data:
   n8n_files:
@@ -588,6 +559,8 @@ EOFVOLUMES
 
 [[ "$INSTALL_PORTAINER" == "true" ]] && echo "  portainer_data:" >> docker-compose.yml
 [[ "$INSTALL_UPTIME" == "true" ]] && echo "  uptime_kuma_data:" >> docker-compose.yml
+[[ "$INSTALL_PIHOLE" == "true" ]] && echo "  pihole_config:" >> docker-compose.yml
+[[ "$INSTALL_PIHOLE" == "true" ]] && echo "  pihole_dnsmasq:" >> docker-compose.yml
 
 cat >> docker-compose.yml << 'EOFNETWORKS'
 
@@ -601,13 +574,15 @@ print_success "docker-compose.yml created"
 
 cat > .env << EOFENV
 DOMAIN_NAME=$DOMAIN_NAME
-SSL_EMAIL=$SSL_EMAIL
+SSL_EMAIL=${SSL_EMAIL:-none}
 GENERIC_TIMEZONE=$GENERIC_TIMEZONE
 POSTGRES_PASSWORD=$POSTGRES_PASSWORD
+PIHOLE_PASSWORD=${PIHOLE_PASSWORD:-none}
+SERVER_IP=$SERVER_IP
 
 # Resource Limits
-TRAEFIK_MEM=$TRAEFIK_MEM
-TRAEFIK_CPU=$TRAEFIK_CPU
+COSMOS_MEM=$COSMOS_MEM
+COSMOS_CPU=$COSMOS_CPU
 POSTGRES_MEM=$POSTGRES_MEM
 POSTGRES_CPU=$POSTGRES_CPU
 N8N_MEM=$N8N_MEM
@@ -618,6 +593,8 @@ PORTAINER_MEM=$PORTAINER_MEM
 PORTAINER_CPU=$PORTAINER_CPU
 UPTIME_MEM=$UPTIME_MEM
 UPTIME_CPU=$UPTIME_CPU
+PIHOLE_MEM=$PIHOLE_MEM
+PIHOLE_CPU=$PIHOLE_CPU
 EOFENV
 
 chmod 600 .env
@@ -625,7 +602,8 @@ print_success ".env created"
 
 print_header "Step 8: Creating Directories"
 mkdir -p jellyfin-media/{movies,tv,music}
-print_success "Media directories created"
+mkdir -p cosmos-config
+print_success "Media and config directories created"
 
 print_header "Step 9: Downloading Images"
 print_info "Downloading Docker images (this may take a few minutes)..."
@@ -654,11 +632,11 @@ print_info "Checking service status..."
 docker compose ps
 
 # Check if critical services are running
-CRITICAL_SERVICES="traefik postgres n8n jellyfin"
+CRITICAL_SERVICES="cosmos postgres n8n jellyfin"
 FAILED_SERVICES=""
 
 for service in $CRITICAL_SERVICES; do
-    if ! docker compose ps | grep -q "$service.*running"; then
+    if ! docker compose ps | grep -q "$service.*running\|$service.*Up"; then
         FAILED_SERVICES="$FAILED_SERVICES $service"
     fi
 done
@@ -680,30 +658,72 @@ Installed: $(date)
 Domain: $DOMAIN_NAME
 Server IP: $SERVER_IP
 Resource Profile: $PROFILE_NAME
+Remote Access: $REMOTE_METHOD
 
-Services:
+Access URLs (via local network or /etc/hosts):
+- Cosmos:    https://cosmos.$DOMAIN_NAME
 - n8n:       https://n8n.$DOMAIN_NAME
 - Jellyfin:  https://jellyfin.$DOMAIN_NAME
 $( [[ "$INSTALL_PORTAINER" == "true" ]] && echo "- Portainer: https://portainer.$DOMAIN_NAME" )
 $( [[ "$INSTALL_UPTIME" == "true" ]] && echo "- Uptime:    https://uptime.$DOMAIN_NAME" )
+$( [[ "$INSTALL_PIHOLE" == "true" ]] && echo "- Pi-hole:   https://pihole.$DOMAIN_NAME/admin" )
+
+Direct IP Access (temporary):
+- Cosmos:    http://$SERVER_IP (or https if configured)
+- n8n:       http://$SERVER_IP:5678
+- Jellyfin:  http://$SERVER_IP:8096
+$( [[ "$INSTALL_PORTAINER" == "true" ]] && echo "- Portainer: http://$SERVER_IP:9000" )
+$( [[ "$INSTALL_UPTIME" == "true" ]] && echo "- Uptime:    http://$SERVER_IP:3001" )
+$( [[ "$INSTALL_PIHOLE" == "true" ]] && echo "- Pi-hole:   http://$SERVER_IP:8053/admin" )
 
 PostgreSQL Credentials:
   User: n8n
   Password: $POSTGRES_PASSWORD
 
+$( [[ "$INSTALL_PIHOLE" == "true" ]] && echo "Pi-hole Admin Password: $PIHOLE_PASSWORD" )
+
 Resource Limits ($PROFILE_NAME):
-  Traefik:   Memory: $TRAEFIK_MEM, CPU: $TRAEFIK_CPU
+  Cosmos:     Memory: $COSMOS_MEM, CPU: $COSMOS_CPU
   PostgreSQL: Memory: $POSTGRES_MEM, CPU: $POSTGRES_CPU
-  n8n:       Memory: $N8N_MEM, CPU: $N8N_CPU
-  Jellyfin:  Memory: $JELLYFIN_MEM, CPU: $JELLYFIN_CPU
-$( [[ "$INSTALL_PORTAINER" == "true" ]] && echo "  Portainer: Memory: $PORTAINER_MEM, CPU: $PORTAINER_CPU" )
-$( [[ "$INSTALL_UPTIME" == "true" ]] && echo "  Uptime:    Memory: $UPTIME_MEM, CPU: $UPTIME_CPU" )
+  n8n:        Memory: $N8N_MEM, CPU: $N8N_CPU
+  Jellyfin:   Memory: $JELLYFIN_MEM, CPU: $JELLYFIN_CPU
+$( [[ "$INSTALL_PORTAINER" == "true" ]] && echo "  Portainer:  Memory: $PORTAINER_MEM, CPU: $PORTAINER_CPU" )
+$( [[ "$INSTALL_UPTIME" == "true" ]] && echo "  Uptime:     Memory: $UPTIME_MEM, CPU: $UPTIME_CPU" )
+$( [[ "$INSTALL_PIHOLE" == "true" ]] && echo "  Pi-hole:    Memory: $PIHOLE_MEM, CPU: $PIHOLE_CPU" )
+
+Remote Access Setup:
+$( [[ "$REMOTE_METHOD" == "tailscale" ]] && echo "  Method: Tailscale VPN
+  Setup Guide: docs/TAILSCALE_SETUP.md
+  After setup, access services via Tailscale network" )
+$( [[ "$REMOTE_METHOD" == "cloudflare" ]] && echo "  Method: Cloudflare Tunnel
+  Setup Guide: docs/CLOUDFLARE_TUNNEL.md
+  Configure Cloudflare dashboard for public access" )
+$( [[ "$REMOTE_METHOD" == "none" ]] && echo "  No remote access configured
+  Services accessible only on local network" )
 
 Important:
 1. All credentials are in the .env file (keep it secure!)
-2. Traefik dashboard: http://$SERVER_IP:8080 (INSECURE - restrict access!)
-3. SSL certificates may take 2-5 minutes to generate
-4. Media files go in: jellyfin-media/movies, jellyfin-media/tv, jellyfin-media/music
+2. Configure services in Cosmos:
+   - Access Cosmos at http://$SERVER_IP
+   - Complete initial setup wizard
+   - Add routes for each service (n8n, jellyfin, etc.)
+3. For LOCAL ACCESS using domain names:
+   Add to /etc/hosts (Mac/Linux) or C:\Windows\System32\drivers\etc\hosts (Windows):
+   $SERVER_IP cosmos.$DOMAIN_NAME
+   $SERVER_IP n8n.$DOMAIN_NAME
+   $SERVER_IP jellyfin.$DOMAIN_NAME
+$( [[ "$INSTALL_PORTAINER" == "true" ]] && echo "   $SERVER_IP portainer.$DOMAIN_NAME" )
+$( [[ "$INSTALL_UPTIME" == "true" ]] && echo "   $SERVER_IP uptime.$DOMAIN_NAME" )
+$( [[ "$INSTALL_PIHOLE" == "true" ]] && echo "   $SERVER_IP pihole.$DOMAIN_NAME" )
+4. For PHONE/MOBILE ACCESS (can't use domain names):
+   Use IP:port format directly:
+   - n8n:       http://$SERVER_IP:5678
+   - Jellyfin:  http://$SERVER_IP:8096
+$( [[ "$INSTALL_PORTAINER" == "true" ]] && echo "   - Portainer: http://$SERVER_IP:9000" )
+$( [[ "$INSTALL_UPTIME" == "true" ]] && echo "   - Uptime:    http://$SERVER_IP:3001" )
+$( [[ "$INSTALL_PIHOLE" == "true" ]] && echo "   - Pi-hole:   http://$SERVER_IP:8053/admin" )
+5. SSL certificates are self-signed (browser warnings are normal)
+6. Media files go in: jellyfin-media/movies, jellyfin-media/tv, jellyfin-media/music
 
 Backup your .env file immediately!
 EOFINST
@@ -711,23 +731,61 @@ EOFINST
 chmod 600 INSTALLATION_INFO.txt
 
 echo ""
-echo -e "${GREEN}Your Services:${NC}"
-echo -e "  • n8n:      https://n8n.$DOMAIN_NAME"
-echo -e "  • Jellyfin: https://jellyfin.$DOMAIN_NAME"
-[[ "$INSTALL_PORTAINER" == "true" ]] && echo -e "  • Portainer: https://portainer.$DOMAIN_NAME"
-[[ "$INSTALL_UPTIME" == "true" ]] && echo -e "  • Uptime: https://uptime.$DOMAIN_NAME"
+echo -e "${GREEN}✨ Installation Complete!${NC}"
 echo ""
-echo -e "${YELLOW}⚠️  Important:${NC}"
-echo -e "  • All credentials saved in: ${BOLD}INSTALLATION_INFO.txt${NC}"
-echo -e "  • PostgreSQL password also in: ${BOLD}.env${NC}"
-echo -e "  • Traefik dashboard at: ${BOLD}http://$SERVER_IP:8080${NC} (INSECURE!)"
+echo -e "${CYAN}Your Services:${NC}"
+echo -e "  • Cosmos:   http://$SERVER_IP (complete setup wizard first)"
+echo -e "  • n8n:      http://$SERVER_IP:5678"
+echo -e "  • Jellyfin: http://$SERVER_IP:8096"
+[[ "$INSTALL_PORTAINER" == "true" ]] && echo -e "  • Portainer: http://$SERVER_IP:9000"
+[[ "$INSTALL_UPTIME" == "true" ]] && echo -e "  • Uptime: http://$SERVER_IP:3001"
+[[ "$INSTALL_PIHOLE" == "true" ]] && echo -e "  • Pi-hole: http://$SERVER_IP:8053/admin"
 echo ""
-echo -e "${CYAN}Next Steps:${NC}"
-echo "1. View credentials: cat INSTALLATION_INFO.txt"
-echo "2. Add media files to: jellyfin-media/movies, jellyfin-media/tv, jellyfin-media/music"
-echo "3. Secure Traefik dashboard: sudo ufw allow from YOUR_IP to any port 8080"
-echo "4. Set up backups (see README.md)"
-echo "5. Wait 2-5 minutes for SSL certificates to generate"
+echo -e "${YELLOW}⚠️  Important Next Steps:${NC}"
+echo ""
+echo "1. ${BOLD}Configure Cosmos:${NC}"
+echo "   • Visit http://$SERVER_IP"
+echo "   • Complete the initial setup wizard"
+echo "   • Set hostname to: cosmos.$DOMAIN_NAME"
+echo "   • Configure SSL (use self-signed for local access)"
+echo "   • Add service routes for n8n, jellyfin, etc."
+echo ""
+echo "2. ${BOLD}Set up local DNS (for domain access on computer):${NC}"
+echo "   Add these to your computer's /etc/hosts:"
+echo "   $SERVER_IP cosmos.$DOMAIN_NAME"
+echo "   $SERVER_IP n8n.$DOMAIN_NAME"
+echo "   $SERVER_IP jellyfin.$DOMAIN_NAME"
+[[ "$INSTALL_PORTAINER" == "true" ]] && echo "   $SERVER_IP portainer.$DOMAIN_NAME"
+[[ "$INSTALL_UPTIME" == "true" ]] && echo "   $SERVER_IP uptime.$DOMAIN_NAME"
+[[ "$INSTALL_PIHOLE" == "true" ]] && echo "   $SERVER_IP pihole.$DOMAIN_NAME"
+echo ""
+echo "   ${BOLD}For phone/mobile access (can't edit /etc/hosts):${NC}"
+echo "   Use IP:port format: http://$SERVER_IP:5678, http://$SERVER_IP:8096, etc."
+echo ""
+
+if [[ "$REMOTE_METHOD" == "tailscale" ]]; then
+    echo "3. ${BOLD}Set up Tailscale (for remote access):${NC}"
+    echo "   • See docs/TAILSCALE_SETUP.md for complete guide"
+    echo "   • Install Tailscale on a Raspberry Pi or VPS"
+    echo "   • Connect your devices to the Tailscale network"
+    echo ""
+elif [[ "$REMOTE_METHOD" == "cloudflare" ]]; then
+    echo "3. ${BOLD}Set up Cloudflare Tunnel (for remote access):${NC}"
+    echo "   • See docs/CLOUDFLARE_TUNNEL.md for complete guide"
+    echo "   • Configure Cloudflare dashboard"
+    echo "   • Add DNS records for your services"
+    echo ""
+fi
+
+echo "4. ${BOLD}View credentials:${NC} cat INSTALLATION_INFO.txt"
+echo "5. ${BOLD}Add media files:${NC} jellyfin-media/movies, jellyfin-media/tv, jellyfin-media/music"
+echo "6. ${BOLD}Set up backups${NC} (see README.md)"
+echo ""
+echo -e "${CYAN}Documentation:${NC}"
+echo "  • README.md - General information"
+echo "  • docs/COSMOS_SETUP.md - Cosmos configuration guide"
+[[ "$REMOTE_METHOD" == "tailscale" ]] && echo "  • docs/TAILSCALE_SETUP.md - Remote access via Tailscale"
+[[ "$REMOTE_METHOD" == "cloudflare" ]] && echo "  • docs/CLOUDFLARE_TUNNEL.md - Public access via Cloudflare"
 echo ""
 print_success "Installation complete! Check logs with: docker compose logs -f"
 exit 0
