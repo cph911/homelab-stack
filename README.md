@@ -32,13 +32,15 @@ Deploy n8n automation, Jellyfin media streaming, and essential services with aut
 - Portainer - Visual Docker container management
 - Uptime Kuma - Service monitoring with alerts
 
-### Optional Features
+### Optional Features (Post-Installation)
 
 - **Telegram Health Bot** - Monitor and restart containers remotely via Telegram
-  - [Setup Guide](docs/TELEGRAM_BOT.md) - No internet exposure required, works on local network
+  - **Separate installer** - Run `./install-telegram-bot.sh` after main installation
+  - [Setup Guide](docs/TELEGRAM_BOT.md) - Interactive setup like the main installer
   - Check container health with `/health` command from your phone
-  - Restart containers remotely with `/restart <name>` command
+  - Restart containers remotely with `/restart` command (shows interactive menu)
   - Runs 24/7 as systemd service with auto-restart
+  - No internet exposure required, works on local network
 
 ### What's NOT Included (And Why)
 
@@ -759,12 +761,25 @@ Options:
 
 ### 5. Optional: Set Up Telegram Health Bot
 
-Monitor your containers remotely from your phone:
+Monitor your containers remotely from your phone with a separate interactive installer:
 
-- Follow the [Telegram Bot Setup Guide](docs/TELEGRAM_BOT.md)
-- Check container health with `/health` command
-- Restart containers with `/restart <name>` command
-- No internet exposure required (works on local network)
+**Run the bot installer:**
+```bash
+cd ~/homelab-stack
+./install-telegram-bot.sh
+```
+
+The installer will:
+- Prompt for your Telegram bot token (from @BotFather)
+- Prompt for your Telegram user ID (from @userinfobot)
+- Automatically set up and start the bot service
+
+Then you can:
+- Check container health with `/health` command from anywhere
+- Restart containers with `/restart` command (interactive menu)
+- Works without internet exposure (local network only)
+
+See the [Telegram Bot Setup Guide](docs/TELEGRAM_BOT.md) for detailed instructions.
 
 ### 6. Set Up Backups
 
