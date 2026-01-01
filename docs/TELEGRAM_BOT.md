@@ -353,7 +353,7 @@ WantedBy=multi-user.target
 ```
 
 **Replace placeholders:**
-- `YOUR_USERNAME` → Your Linux username (e.g., `h1234`)
+- `YOUR_USERNAME` → Your Linux username (e.g., `John1234`)
 - `YOUR_TELEGRAM_USER_ID` → Your Telegram user ID from @userinfobot
 
 Save and exit (`Ctrl+X`, then `Y`, then `Enter`).
