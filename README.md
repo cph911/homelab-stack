@@ -32,7 +32,15 @@ Deploy n8n automation, Jellyfin media streaming, and essential services with aut
 - Portainer - Visual Docker container management
 - Uptime Kuma - Service monitoring with alerts
 
-### What’s NOT Included (And Why)
+### Optional Features
+
+- **Telegram Health Bot** - Monitor and restart containers remotely via Telegram
+  - [Setup Guide](docs/TELEGRAM_BOT.md) - No internet exposure required, works on local network
+  - Check container health with `/health` command from your phone
+  - Restart containers remotely with `/restart <name>` command
+  - Runs 24/7 as systemd service with auto-restart
+
+### What's NOT Included (And Why)
 
 - ❌ Supabase - Massive overhead (8+ containers), not needed for most homelabs
 - ❌ Qdrant/Vector DBs - Only needed for AI/RAG workflows
@@ -749,7 +757,16 @@ Options:
 1. Disable it: Remove `--api.dashboard=true` from docker-compose.yml
 1. Add basic auth (advanced)
 
-### 5. Set Up Backups
+### 5. Optional: Set Up Telegram Health Bot
+
+Monitor your containers remotely from your phone:
+
+- Follow the [Telegram Bot Setup Guide](docs/TELEGRAM_BOT.md)
+- Check container health with `/health` command
+- Restart containers with `/restart <name>` command
+- No internet exposure required (works on local network)
+
+### 6. Set Up Backups
 
 - Configure automated backup script (see Backup section)
 - Test restore process

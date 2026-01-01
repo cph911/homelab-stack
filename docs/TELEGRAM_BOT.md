@@ -1,0 +1,458 @@
+# 🤖 Telegram Health Monitoring Bot (Optional)
+
+Monitor and manage your Docker containers remotely via Telegram. Check container health and restart services from anywhere using your phone.
+
+## ✨ Features
+
+- **Container Health Checks**: Get instant status reports for all running containers
+- **Remote Restart**: Restart containers directly from Telegram
+- **24/7 Monitoring**: Runs as a systemd service in the background
+- **Secure**: Restrict access to your Telegram user ID only
+- **Local Network**: Works without exposing services to the internet
+
+---
+
+## 📋 Prerequisites
+
+- Working homelab-stack installation
+- Telegram account
+- Python 3 installed on your server
+
+---
+
+## 🚀 Quick Setup
+
+### Step 1: Create Telegram Bot
+
+1. Open Telegram and search for [@BotFather](https://t.me/botfather)
+2. Send `/newbot` command
+3. Follow prompts to set bot name and username
+4. Save the **bot token** (looks like `1234567890:ABCdefGHIjklMNOpqrsTUVwxyz`)
+
+### Step 2: Get Your Telegram User ID
+
+1. Search for [@userinfobot](https://t.me/userinfobot) in Telegram
+2. Send `/start` command
+3. Save your **user ID** (numeric, e.g., `123456789`)
+
+### Step 3: Install Python Dependencies
+
+SSH into your server and install the required library:
+
+```bash
+sudo apt update
+sudo apt install -y python3-telebot
+```
+
+### Step 4: Create Bot Script
+
+Create the bot directory:
+
+```bash
+mkdir -p ~/telegram-bot
+cd ~/telegram-bot
+```
+
+Create the bot script:
+
+```bash
+nano bot.py
+```
+
+Paste the following code:
+
+```python
+#!/usr/bin/env python3
+import telebot
+import subprocess
+import sys
+
+# Configuration
+BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"
+ALLOWED_USER_ID = None
+
+bot = telebot.TeleBot(BOT_TOKEN)
+
+@bot.message_handler(commands=['health', 'status'])
+def send_health(message):
+    if ALLOWED_USER_ID and message.from_user.id != ALLOWED_USER_ID:
+        bot.reply_to(message, "⛔ Unauthorized")
+        return
+
+    try:
+        result = subprocess.run(
+            ['docker', 'ps', '--format', '{{.Names}}|{{.State}}|{{.Status}}'],
+            capture_output=True, text=True, check=True, timeout=10
+        )
+
+        report = "🏥 *Container Health Report*\n\n"
+        for line in result.stdout.strip().split('\n'):
+            if '|' in line:
+                parts = line.split('|')
+                name = parts[0]
+                state = parts[1] if len(parts) > 1 else 'unknown'
+                status = parts[2] if len(parts) > 2 else 'unknown'
+                emoji = "✅" if state == 'running' else "❌"
+                report += f"{emoji} *{name}*\n   {status}\n\n"
+
+        bot.reply_to(message, report, parse_mode='Markdown')
+    except Exception as e:
+        bot.reply_to(message, f"❌ Error: {str(e)}")
+
+@bot.message_handler(commands=['restart'])
+def restart_container(message):
+    if ALLOWED_USER_ID and message.from_user.id != ALLOWED_USER_ID:
+        bot.reply_to(message, "⛔ Unauthorized")
+        return
+
+    args = message.text.split()
+    if len(args) < 2:
+        bot.reply_to(message, "Usage: /restart <container_name>")
+        return
+
+    try:
+        subprocess.run(['docker', 'restart', args[1]], check=True, timeout=30)
+        bot.reply_to(message, f"✅ Restarted *{args[1]}*", parse_mode='Markdown')
+    except Exception as e:
+        bot.reply_to(message, f"❌ Error: {str(e)}")
+
+@bot.message_handler(commands=['start', 'help'])
+def send_help(message):
+    bot.reply_to(message, """🤖 *Homelab Health Bot*
+
+/health - Container status
+/restart <name> - Restart container
+/help - This message""", parse_mode='Markdown')
+
+if __name__ == '__main__':
+    if len(sys.argv) > 1:
+        ALLOWED_USER_ID = int(sys.argv[1])
+        print(f"🔒 Restricted to user: {ALLOWED_USER_ID}")
+
+    print("🤖 Bot started!")
+    bot.infinity_polling()
+```
+
+**Replace placeholders:**
+- `YOUR_BOT_TOKEN_HERE` → Your bot token from BotFather
+
+Save and exit (`Ctrl+X`, then `Y`, then `Enter`).
+
+Make the script executable:
+
+```bash
+chmod +x bot.py
+```
+
+### Step 5: Test the Bot Manually (Optional)
+
+Before setting up the service, test that it works:
+
+```bash
+python3 bot.py YOUR_TELEGRAM_USER_ID
+```
+
+Open Telegram, search for your bot, and send `/health`. You should see a container status report.
+
+Press `Ctrl+C` to stop the test.
+
+### Step 6: Create systemd Service
+
+Create the service file:
+
+```bash
+sudo nano /etc/systemd/system/telegram-bot.service
+```
+
+Paste the following configuration:
+
+```ini
+[Unit]
+Description=Telegram Homelab Health Bot
+After=network.target docker.service
+
+[Service]
+Type=simple
+User=YOUR_USERNAME
+WorkingDirectory=/home/YOUR_USERNAME/telegram-bot
+ExecStart=/usr/bin/python3 /home/YOUR_USERNAME/telegram-bot/bot.py YOUR_TELEGRAM_USER_ID
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+**Replace placeholders:**
+- `YOUR_USERNAME` → Your Linux username (e.g., `h1234`)
+- `YOUR_TELEGRAM_USER_ID` → Your Telegram user ID from @userinfobot
+
+Save and exit (`Ctrl+X`, then `Y`, then `Enter`).
+
+### Step 7: Enable and Start Service
+
+Reload systemd to recognize the new service:
+
+```bash
+sudo systemctl daemon-reload
+```
+
+Enable the service to start on boot:
+
+```bash
+sudo systemctl enable telegram-bot
+```
+
+Start the service:
+
+```bash
+sudo systemctl start telegram-bot
+```
+
+Check service status:
+
+```bash
+sudo systemctl status telegram-bot
+```
+
+You should see `Active: active (running)` in green.
+
+---
+
+## 📱 Using the Bot
+
+### Available Commands
+
+- `/start` or `/help` - Show help message
+- `/health` or `/status` - Get container health report
+- `/restart <container_name>` - Restart a specific container
+
+### Example Usage
+
+**Check health:**
+```
+/health
+```
+
+Response:
+```
+🏥 Container Health Report
+
+✅ traefik
+   Up 2 hours
+
+✅ n8n
+   Up 2 hours (healthy)
+
+✅ jellyfin
+   Up 2 hours
+
+❌ portainer
+   Exited (1) 5 minutes ago
+```
+
+**Restart container:**
+```
+/restart portainer
+```
+
+Response:
+```
+✅ Restarted portainer
+```
+
+---
+
+## 🔧 Management Commands
+
+### Check Service Status
+
+```bash
+sudo systemctl status telegram-bot
+```
+
+### View Bot Logs
+
+```bash
+sudo journalctl -u telegram-bot -f
+```
+
+### Restart Bot Service
+
+```bash
+sudo systemctl restart telegram-bot
+```
+
+### Stop Bot Service
+
+```bash
+sudo systemctl stop telegram-bot
+```
+
+### Disable Bot Service (Stop Auto-Start)
+
+```bash
+sudo systemctl disable telegram-bot
+```
+
+---
+
+## 🔥 Troubleshooting
+
+### Bot Doesn't Respond to Commands
+
+**Check service status:**
+```bash
+sudo systemctl status telegram-bot
+```
+
+**Check logs for errors:**
+```bash
+sudo journalctl -u telegram-bot -n 50
+```
+
+**Common issues:**
+- Wrong bot token → Edit `bot.py` and fix the token
+- Wrong user ID → Edit service file and fix the user ID
+- Python library not installed → Run `sudo apt install -y python3-telebot`
+
+### "Could not resolve host: api.telegram.org"
+
+Your server's DNS can't reach Telegram API (common with ISP DNS blocking).
+
+**Fix: Use Google DNS**
+
+```bash
+# Override DNS configuration
+sudo bash -c 'cat > /etc/resolv.conf << EOF
+nameserver 8.8.8.8
+nameserver 1.1.1.1
+EOF'
+
+# Make it immutable (prevent NetworkManager from overwriting)
+sudo chattr +i /etc/resolv.conf
+
+# Restart bot service
+sudo systemctl restart telegram-bot
+```
+
+**Verify DNS works:**
+```bash
+curl https://api.telegram.org/botYOUR_BOT_TOKEN/getMe
+```
+
+You should see JSON response with bot information.
+
+### Unauthorized Error
+
+If you get "⛔ Unauthorized" when sending commands:
+
+1. Verify you're using the correct Telegram account
+2. Check your user ID: Send `/start` to [@userinfobot](https://t.me/userinfobot)
+3. Update the service file with correct user ID:
+   ```bash
+   sudo nano /etc/systemd/system/telegram-bot.service
+   ```
+4. Restart the service:
+   ```bash
+   sudo systemctl daemon-reload
+   sudo systemctl restart telegram-bot
+   ```
+
+### Service Fails to Start
+
+**Check for Python errors:**
+```bash
+sudo journalctl -u telegram-bot -n 50
+```
+
+**Test the script manually:**
+```bash
+cd ~/telegram-bot
+python3 bot.py YOUR_USER_ID
+```
+
+Look for error messages, then fix the script and restart the service.
+
+### Container Restart Permission Denied
+
+The bot user needs Docker access. Add the user to the Docker group:
+
+```bash
+sudo usermod -aG docker YOUR_USERNAME
+```
+
+Restart the service:
+```bash
+sudo systemctl restart telegram-bot
+```
+
+---
+
+## 🔐 Security Considerations
+
+### Access Control
+
+- **User ID Restriction**: The bot only accepts commands from your Telegram user ID
+- **Local Network**: Bot runs on your server without exposing ports to the internet
+- **No Webhooks**: Uses polling (no public URL required)
+
+### Best Practices
+
+1. **Never share your bot token** - Anyone with the token can control your bot
+2. **Restrict to your user ID** - Always pass your Telegram user ID when starting the bot
+3. **Monitor bot logs** - Check `journalctl -u telegram-bot` regularly for suspicious activity
+4. **Limit restart permissions** - Be careful which containers you restart remotely
+
+### Advanced: Using with Tailscale/VPN
+
+If you use Tailscale or another VPN for remote access:
+
+1. The bot works **without** any VPN (Telegram API is public)
+2. Your bot communicates with Telegram servers over the internet
+3. You send commands from your phone → Telegram servers → Your bot
+4. No need to expose your homelab to the internet
+
+This is **safer** than webhooks which require a public URL.
+
+---
+
+## 🎯 Why This Works Better Than Alternatives
+
+### vs n8n Telegram Webhooks
+
+- ❌ n8n webhooks require public internet access
+- ❌ n8n polling doesn't have "Get Updates" action
+- ❌ Complex offset state management for polling
+- ✅ Python bot handles polling automatically
+- ✅ Works on local network without port forwarding
+
+### vs Manual SSH
+
+- ❌ SSH requires terminal access
+- ❌ Typing commands on phone is slow
+- ✅ Telegram bot provides instant status from anywhere
+- ✅ Simple commands like `/health` instead of `docker ps`
+- ✅ Works on phone, tablet, or any device with Telegram
+
+### vs Portainer API
+
+- ❌ Portainer API requires authentication setup
+- ❌ Need to expose Portainer or use VPN
+- ✅ Telegram bot is simpler and works immediately
+- ✅ No additional authentication needed
+- ✅ Familiar Telegram interface
+
+---
+
+## 📚 Additional Resources
+
+- [python-telegram-bot Documentation](https://github.com/eternnoir/pyTelegramBotAPI)
+- [Telegram Bot API Reference](https://core.telegram.org/bots/api)
+- [systemd Service Management](https://www.freedesktop.org/software/systemd/man/systemctl.html)
+
+---
+
+## 🙏 Credits
+
+Created for simple remote monitoring without exposing your homelab to the internet. Perfect for self-hosters who want quick status checks from their phone.
