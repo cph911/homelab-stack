@@ -1,8 +1,22 @@
 # 🏠 Homelab Stack
 
-Lean, quick and easy home server installer for self-hosters who value simplicity over bloat.
+**Production habits on personal hardware, without enterprise bloat.**
 
-Deploy n8n automation, Jellyfin media streaming, and essential services with automated SSL certificates, dynamic resource limits, and proper monitoring. Supports multiple server configurations (16GB to 64GB+ RAM) with intelligent resource allocation.
+A lean, automated home server installer for self-hosters who want reliability without complexity. Deploy n8n automation, Jellyfin media streaming, and essential services with automatic SSL certificates, intelligent resource limits, and seamless inter-service communication.
+
+## Who This Is For
+
+This stack is perfect for you if:
+- ✅ You've outgrown single-container setups but don't need Kubernetes
+- ✅ You want automation that's explained, not magical
+- ✅ You're learning infrastructure on your own hardware
+- ✅ You need reliability without corporate complexity
+- ✅ You value working code over bleeding-edge features
+
+**Not for you if:**
+- ❌ You just want Plex (use a simpler guide)
+- ❌ You're running enterprise production workloads (you need K8s)
+- ❌ You want every feature under the sun (this is intentionally lean)
 
 
 > ⚠️ IMPORTANT DISCLAIMER
@@ -37,6 +51,15 @@ Deploy n8n automation, Jellyfin media streaming, and essential services with aut
 - **Pi-hole** - Network-wide ad blocking and DNS management
 - **Tailscale** - Private VPN for remote access (ideal for CG-NAT/no static IP)
 - **Cloudflare Tunnel** - Public domain access alternative
+
+### Smart Networking (Automatic)
+
+- **Auto-Connector Service** - Automatically connects Cosmos market apps to shared network
+  - Runs as systemd service, monitors Docker events
+  - Apps from Cosmos market + docker-compose services can communicate seamlessly
+  - No manual `docker network connect` commands needed
+  - Enables Notifiarr → qBittorrent, Sonarr → Radarr, etc. out of the box
+  - Logs to `/var/log/cosmos-network-connector.log` for debugging
 
 ### Optional Features (Post-Installation)
 
@@ -557,6 +580,10 @@ docker run --rm \
 
 ## 🔥 Troubleshooting
 
+> 📖 **For comprehensive troubleshooting, see [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)**
+>
+> This section covers quick fixes. For detailed solutions to DNS issues, network connectivity problems, service-specific errors, and more, check the full troubleshooting guide.
+
 ### Services Won't Start
 
 **Check logs for errors:**
@@ -815,7 +842,19 @@ See the [Telegram Bot Setup Guide](docs/TELEGRAM_BOT.md) for detailed instructio
 
 -----
 
-## 📚 Documentation Links
+## 📚 Documentation
+
+### This Project
+
+**Essential Reading:**
+- **[Architecture](docs/ARCHITECTURE.md)** - How the stack works, network topology, traffic flow
+- **[Post-Installation Guide](docs/POST_INSTALL.md)** - Next steps after installation
+- **[Troubleshooting](docs/TROUBLESHOOTING.md)** - Common issues and solutions
+- **[Security](docs/SECURITY.md)** - Threat model, security boundaries, best practices
+
+**Additional Guides:**
+- [Telegram Bot Setup](docs/TELEGRAM_BOT.md) - Remote monitoring via Telegram
+- [Cosmos Setup](docs/COSMOS_SETUP.md) - Reverse proxy configuration
 
 ### Official Service Docs
 
@@ -828,7 +867,7 @@ See the [Telegram Bot Setup Guide](docs/TELEGRAM_BOT.md) for detailed instructio
 ### Learning Resources
 
 - [Docker Compose Best Practices](https://docs.docker.com/compose/production/)
-- [Let’s Encrypt Rate Limits](https://letsencrypt.org/docs/rate-limits/)
+- [Let's Encrypt Rate Limits](https://letsencrypt.org/docs/rate-limits/)
 - [n8n Workflow Templates](https://n8n.io/workflows/)
 - [Jellyfin Optimization Guide](https://jellyfin.org/docs/general/administration/configuration/)
 
