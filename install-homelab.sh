@@ -405,6 +405,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
     networks:
       - homelab
+      - homelab-shared
     deploy:
       resources:
         limits:
@@ -440,6 +441,7 @@ services:
       - n8n_files:/files
     networks:
       - homelab
+      - homelab-shared
     depends_on:
       postgres:
         condition: service_healthy
@@ -467,6 +469,7 @@ services:
       - /dev/dri:/dev/dri
     networks:
       - homelab
+      - homelab-shared
     deploy:
       resources:
         limits:
@@ -489,6 +492,7 @@ if [[ "$INSTALL_PORTAINER" == "true" ]]; then
       - portainer_data:/data
     networks:
       - homelab
+      - homelab-shared
     deploy:
       resources:
         limits:
@@ -510,6 +514,7 @@ if [[ "$INSTALL_UPTIME" == "true" ]]; then
       - uptime_kuma_data:/app/data
     networks:
       - homelab
+      - homelab-shared
     deploy:
       resources:
         limits:
@@ -539,6 +544,7 @@ if [[ "$INSTALL_PIHOLE" == "true" ]]; then
       - pihole_dnsmasq:/etc/dnsmasq.d
     networks:
       - homelab
+      - homelab-shared
     deploy:
       resources:
         limits:
@@ -568,6 +574,9 @@ networks:
   homelab:
     name: homelab
     driver: bridge
+  homelab-shared:
+    name: homelab-shared
+    external: true
 EOFNETWORKS
 
 print_success "docker-compose.yml created"
@@ -657,6 +666,16 @@ else
     print_info "Shared network already exists"
 fi
 
+print_info "Creating required system files..."
+# Create utmp file for Notifiarr and other monitoring apps
+if [ ! -f /var/run/utmp ]; then
+    sudo touch /var/run/utmp
+    sudo chmod 644 /var/run/utmp
+    print_success "Created /var/run/utmp file"
+else
+    print_info "utmp file already exists"
+fi
+
 print_info "Installing auto-connector service..."
 
 # Create the auto-connector script
@@ -708,6 +727,11 @@ SERVICE_EOF
 
 sudo systemctl daemon-reload
 sudo systemctl enable cosmos-network-connector > /dev/null 2>&1
+
+# Create log file with proper permissions
+sudo touch /var/log/cosmos-network-connector.log
+sudo chmod 666 /var/log/cosmos-network-connector.log
+
 sudo systemctl start cosmos-network-connector
 
 if systemctl is-active --quiet cosmos-network-connector; then
