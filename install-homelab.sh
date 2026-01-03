@@ -405,6 +405,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
     networks:
       - homelab
+      - homelab-shared
     deploy:
       resources:
         limits:
@@ -440,6 +441,7 @@ services:
       - n8n_files:/files
     networks:
       - homelab
+      - homelab-shared
     depends_on:
       postgres:
         condition: service_healthy
@@ -467,6 +469,7 @@ services:
       - /dev/dri:/dev/dri
     networks:
       - homelab
+      - homelab-shared
     deploy:
       resources:
         limits:
@@ -489,6 +492,7 @@ if [[ "$INSTALL_PORTAINER" == "true" ]]; then
       - portainer_data:/data
     networks:
       - homelab
+      - homelab-shared
     deploy:
       resources:
         limits:
@@ -510,6 +514,7 @@ if [[ "$INSTALL_UPTIME" == "true" ]]; then
       - uptime_kuma_data:/app/data
     networks:
       - homelab
+      - homelab-shared
     deploy:
       resources:
         limits:
@@ -539,6 +544,7 @@ if [[ "$INSTALL_PIHOLE" == "true" ]]; then
       - pihole_dnsmasq:/etc/dnsmasq.d
     networks:
       - homelab
+      - homelab-shared
     deploy:
       resources:
         limits:
@@ -568,6 +574,9 @@ networks:
   homelab:
     name: homelab
     driver: bridge
+  homelab-shared:
+    name: homelab-shared
+    external: true
 EOFNETWORKS
 
 print_success "docker-compose.yml created"
@@ -649,6 +658,90 @@ else
     print_success "All critical services are running"
 fi
 
+print_header "Step 12: Setting up Cosmos App Auto-Connector"
+print_info "Creating shared network for Cosmos market apps..."
+if docker network create homelab-shared 2>/dev/null; then
+    print_success "Shared network created"
+else
+    print_info "Shared network already exists"
+fi
+
+print_info "Creating required system files..."
+# Create utmp file for Notifiarr and other monitoring apps
+if [ ! -f /var/run/utmp ]; then
+    sudo touch /var/run/utmp
+    sudo chmod 644 /var/run/utmp
+    print_success "Created /var/run/utmp file"
+else
+    print_info "utmp file already exists"
+fi
+
+print_info "Installing auto-connector service..."
+
+# Create the auto-connector script
+cat > /tmp/cosmos-network-connector.sh << 'CONNECTOR_EOF'
+#!/bin/bash
+SHARED_NETWORK="homelab-shared"
+LOG_FILE="/var/log/cosmos-network-connector.log"
+
+log() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
+}
+
+docker network create "$SHARED_NETWORK" 2>/dev/null || true
+log "Starting Cosmos network connector..."
+
+docker events --filter 'event=start' --format '{{.Actor.Attributes.name}}' | while read container_name
+do
+    if docker inspect "$container_name" 2>/dev/null | grep -q "cosmos-"; then
+        if ! docker inspect "$container_name" | grep -q "$SHARED_NETWORK"; then
+            log "Connecting $container_name to $SHARED_NETWORK"
+            docker network connect "$SHARED_NETWORK" "$container_name" 2>/dev/null && \
+                log "✅ Connected $container_name" || \
+                log "❌ Failed to connect $container_name"
+        fi
+    fi
+done
+CONNECTOR_EOF
+
+sudo cp /tmp/cosmos-network-connector.sh /usr/local/bin/
+sudo chmod +x /usr/local/bin/cosmos-network-connector.sh
+rm /tmp/cosmos-network-connector.sh
+
+# Create systemd service
+sudo tee /etc/systemd/system/cosmos-network-connector.service > /dev/null << 'SERVICE_EOF'
+[Unit]
+Description=Auto-connect Cosmos apps to shared network
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/cosmos-network-connector.sh
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+SERVICE_EOF
+
+sudo systemctl daemon-reload
+sudo systemctl enable cosmos-network-connector > /dev/null 2>&1
+
+# Create log file with proper permissions
+sudo touch /var/log/cosmos-network-connector.log
+sudo chmod 666 /var/log/cosmos-network-connector.log
+
+sudo systemctl start cosmos-network-connector
+
+if systemctl is-active --quiet cosmos-network-connector; then
+    print_success "Auto-connector service installed and running"
+    print_info "Apps from Cosmos market will automatically connect to shared network"
+else
+    print_warning "Auto-connector service installed but failed to start"
+    print_info "Check logs with: sudo systemctl status cosmos-network-connector"
+fi
+
 print_header "🎉 Installation Complete!"
 
 cat > INSTALLATION_INFO.txt << EOFINST
@@ -691,6 +784,13 @@ $( [[ "$INSTALL_PORTAINER" == "true" ]] && echo "  Portainer:  Memory: $PORTAINE
 $( [[ "$INSTALL_UPTIME" == "true" ]] && echo "  Uptime:     Memory: $UPTIME_MEM, CPU: $UPTIME_CPU" )
 $( [[ "$INSTALL_PIHOLE" == "true" ]] && echo "  Pi-hole:    Memory: $PIHOLE_MEM, CPU: $PIHOLE_CPU" )
 
+Cosmos Market Apps Auto-Connector:
+  ✓ Auto-connector service installed and running
+  ✓ Any app installed from Cosmos market will automatically connect to shared network
+  ✓ Apps can communicate with each other (e.g., Sonarr → qBittorrent)
+  ✓ Logs: /var/log/cosmos-network-connector.log
+  ✓ Service status: sudo systemctl status cosmos-network-connector
+
 Remote Access Setup:
 $( [[ "$REMOTE_METHOD" == "tailscale" ]] && echo "  Method: Tailscale VPN
   Setup Guide: docs/TAILSCALE_SETUP.md
@@ -724,6 +824,7 @@ $( [[ "$INSTALL_UPTIME" == "true" ]] && echo "   - Uptime:    http://$SERVER_IP:
 $( [[ "$INSTALL_PIHOLE" == "true" ]] && echo "   - Pi-hole:   http://$SERVER_IP:8053/admin" )
 5. SSL certificates are self-signed (browser warnings are normal)
 6. Media files go in: jellyfin-media/movies, jellyfin-media/tv, jellyfin-media/music
+7. Apps from Cosmos market automatically connect to shared network (no manual steps!)
 
 Backup your .env file immediately!
 EOFINST
@@ -740,6 +841,8 @@ echo -e "  • Jellyfin: http://$SERVER_IP:8096"
 [[ "$INSTALL_PORTAINER" == "true" ]] && echo -e "  • Portainer: http://$SERVER_IP:9000"
 [[ "$INSTALL_UPTIME" == "true" ]] && echo -e "  • Uptime: http://$SERVER_IP:3001"
 [[ "$INSTALL_PIHOLE" == "true" ]] && echo -e "  • Pi-hole: http://$SERVER_IP:8053/admin"
+echo ""
+echo -e "${GREEN}✓ Auto-connector installed: Cosmos market apps will auto-connect to shared network${NC}"
 echo ""
 echo -e "${YELLOW}⚠️  Important Next Steps:${NC}"
 echo ""
@@ -788,4 +891,5 @@ echo "  • docs/COSMOS_SETUP.md - Cosmos configuration guide"
 [[ "$REMOTE_METHOD" == "cloudflare" ]] && echo "  • docs/CLOUDFLARE_TUNNEL.md - Public access via Cloudflare"
 echo ""
 print_success "Installation complete! Check logs with: docker compose logs -f"
+print_info "Auto-connector logs: /var/log/cosmos-network-connector.log"
 exit 0
