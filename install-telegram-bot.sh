@@ -158,6 +158,8 @@ import telebot
 from telebot import types
 import subprocess
 import sys
+import time
+import os
 
 # Configuration
 BOT_TOKEN = "BOT_TOKEN_PLACEHOLDER"
@@ -184,6 +186,65 @@ def get_containers():
         return containers
     except Exception as e:
         return []
+
+def wait_for_containers(max_wait=120, check_interval=5):
+    """Wait for containers to be up and return count"""
+    print("🔍 Waiting for containers to start...")
+    start_time = time.time()
+
+    while (time.time() - start_time) < max_wait:
+        containers = get_containers()
+        if len(containers) > 0:
+            # Wait a bit more to ensure they're stable
+            time.sleep(10)
+            return containers
+        time.sleep(check_interval)
+
+    return []
+
+def send_startup_notification():
+    """Send notification when homelab comes online"""
+    if not ALLOWED_USER_ID:
+        return
+
+    try:
+        # Wait for containers to start
+        containers = wait_for_containers()
+
+        if not containers:
+            print("⚠️ No containers found after waiting")
+            return
+
+        # Build startup message
+        running_count = sum(1 for c in containers if c['state'] == 'running')
+        total_count = len(containers)
+
+        message = f"🚀 *Homelab is Online!*\n\n"
+        message += f"✅ {running_count}/{total_count} containers running\n\n"
+
+        # List key services
+        key_services = ['cosmos', 'jellyfin', 'n8n', 'postgres', 'portainer', 'uptime-kuma', 'pihole']
+        found_services = []
+
+        for container in containers:
+            for service in key_services:
+                if service in container['name'].lower():
+                    emoji = "✅" if container['state'] == 'running' else "❌"
+                    found_services.append(f"{emoji} {container['name']}")
+                    break
+
+        if found_services:
+            message += "*Key Services:*\n"
+            message += "\n".join(found_services)
+
+        message += "\n\n_Ready to serve! 🎉_"
+
+        # Send notification
+        bot.send_message(ALLOWED_USER_ID, message, parse_mode='Markdown')
+        print(f"✅ Startup notification sent to user {ALLOWED_USER_ID}")
+
+    except Exception as e:
+        print(f"❌ Failed to send startup notification: {e}")
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
@@ -350,7 +411,14 @@ if __name__ == '__main__':
     # Set up command menu
     setup_commands()
 
+    # Send startup notification (runs in background)
+    import threading
+    startup_thread = threading.Thread(target=send_startup_notification)
+    startup_thread.daemon = True
+    startup_thread.start()
+
     print("🤖 Bot started!")
+    print("📬 Startup notification will be sent once containers are ready...")
     bot.infinity_polling()
 BOTSCRIPT
 
