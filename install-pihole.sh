@@ -6,7 +6,7 @@ set -e
 
 # Configuration - CUSTOMIZE THESE!
 SERVER_IP="${SERVER_IP}"  # Required: Set your server's IP
-PIHOLE_PASSWORD="${PIHOLE_PASSWORD:-admin}"
+PIHOLE_PASSWORD="${PIHOLE_PASSWORD}"  # Required: Set your Pi-hole admin password
 TIMEZONE="${TZ:-America/New_York}"
 UPSTREAM_DNS="${PIHOLE_DNS:-8.8.8.8}"
 CONTAINER_NAME="pihole"
@@ -14,7 +14,13 @@ CONTAINER_NAME="pihole"
 # Validate required parameters
 if [ -z "$SERVER_IP" ]; then
     echo "❌ ERROR: SERVER_IP is required"
-    echo "Usage: SERVER_IP=your.server.ip ./install-pihole.sh"
+    echo "Usage: SERVER_IP=your.server.ip PIHOLE_PASSWORD=yourpassword ./install-pihole.sh"
+    exit 1
+fi
+
+if [ -z "$PIHOLE_PASSWORD" ]; then
+    echo "❌ ERROR: PIHOLE_PASSWORD is required"
+    echo "Usage: SERVER_IP=your.server.ip PIHOLE_PASSWORD=yourpassword ./install-pihole.sh"
     exit 1
 fi
 

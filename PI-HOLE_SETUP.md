@@ -3,12 +3,14 @@
 ## Automated Installation (Recommended)
 
 ```bash
-# Required: Set your server's IP address
-SERVER_IP=YOUR_SERVER_IP ./install-pihole.sh
-
-# With custom password:
+# Required: Set your server's IP and password
 SERVER_IP=YOUR_SERVER_IP PIHOLE_PASSWORD=yourpassword ./install-pihole.sh
+
+# Example:
+# SERVER_IP=192.168.1.100 PIHOLE_PASSWORD=MySecurePass123 ./install-pihole.sh
 ```
+
+**Important:** Setting a password here ensures it persists across server reboots and prevents login issues.
 
 This script automatically:
 - Removes old Pi-hole container
