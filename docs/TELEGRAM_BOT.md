@@ -6,6 +6,9 @@ Monitor and manage your Docker containers remotely via Telegram. Check container
 
 - **Container Health Checks**: Get instant status reports for all running containers
 - **Remote Restart**: Restart containers directly from Telegram
+- **Automatic Failure Notifications**: Get instant alerts when containers fail (checked every 10 minutes)
+- **Automatic Log Capture**: Failed container logs are automatically saved for troubleshooting
+- **Startup Notifications**: Get notified when your homelab comes online
 - **24/7 Monitoring**: Runs as a systemd service in the background
 - **Secure**: Restrict access to your Telegram user ID only
 - **Local Network**: Works without exposing services to the internet
@@ -465,6 +468,64 @@ Response:
 ```
 ✅ Restarted portainer
 ```
+
+---
+
+## 🚨 Automatic Failure Monitoring
+
+The bot automatically monitors your containers for failures and sends you instant notifications.
+
+### How It Works
+
+- **Periodic Checks**: Every 10 minutes, the bot checks all container states
+- **Failure Detection**: If a container transitions from "running" to "exited", "stopped", or "dead", you get notified
+- **Automatic Log Capture**: When a failure is detected, the bot automatically saves the last 500 lines of container logs
+- **Historical Record**: Logs are saved with timestamps in `~/telegram-bot-logs/` for later analysis
+
+### Example Notification
+
+When a container fails, you'll receive a message like this:
+
+```
+🚨 Container Failed!
+
+Container: portainer
+Previous State: running
+Current State: exited
+Status: Exited (1) 3 seconds ago
+
+📝 Logs saved to:
+/home/user/telegram-bot-logs/portainer_20260105_143022.log
+
+Detected at 2026-01-05 14:30:22
+```
+
+### Viewing Saved Logs
+
+Logs are stored in `~/telegram-bot-logs/` with filenames in the format: `<container-name>_<timestamp>.log`
+
+**List all saved logs:**
+```bash
+ls -lh ~/telegram-bot-logs/
+```
+
+**View a specific log:**
+```bash
+cat ~/telegram-bot-logs/portainer_20260105_143022.log
+```
+
+**Clean up old logs (optional):**
+```bash
+# Delete logs older than 30 days
+find ~/telegram-bot-logs/ -name "*.log" -mtime +30 -delete
+```
+
+### Important Notes
+
+- Only failures (running → stopped) trigger notifications, not containers that are already stopped
+- The first health check runs 10 minutes after bot startup to avoid false positives
+- Logs are captured at the moment of failure, preserving critical debugging information
+- Each failure generates a separate notification and log file
 
 ---
 

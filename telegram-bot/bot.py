@@ -5,10 +5,16 @@ import subprocess
 import sys
 import time
 import os
+import datetime
+import threading
 
 # Configuration
 BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"
 ALLOWED_USER_ID = None
+LOG_DIR = os.path.expanduser("~/telegram-bot-logs")
+
+# Global state tracking for container health monitoring
+container_states = {}
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
@@ -46,6 +52,142 @@ def wait_for_containers(max_wait=120, check_interval=5):
         time.sleep(check_interval)
 
     return []
+
+def ensure_log_directory():
+    """Create log directory if it doesn't exist"""
+    if not os.path.exists(LOG_DIR):
+        os.makedirs(LOG_DIR)
+        print(f"✅ Created log directory: {LOG_DIR}")
+
+def get_all_containers():
+    """Get list of ALL containers (including stopped ones)"""
+    try:
+        result = subprocess.run(
+            ['docker', 'ps', '-a', '--format', '{{.Names}}|{{.State}}|{{.Status}}'],
+            capture_output=True, text=True, check=True, timeout=10
+        )
+        containers = []
+        for line in result.stdout.strip().split('\n'):
+            if '|' in line:
+                parts = line.split('|')
+                containers.append({
+                    'name': parts[0],
+                    'state': parts[1] if len(parts) > 1 else 'unknown',
+                    'status': parts[2] if len(parts) > 2 else 'unknown'
+                })
+        return containers
+    except Exception as e:
+        print(f"❌ Error getting all containers: {e}")
+        return []
+
+def save_container_logs(container_name):
+    """Save container logs to a file"""
+    try:
+        ensure_log_directory()
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        log_file = os.path.join(LOG_DIR, f"{container_name}_{timestamp}.log")
+
+        # Get last 500 lines of logs
+        result = subprocess.run(
+            ['docker', 'logs', '--tail', '500', container_name],
+            capture_output=True, text=True, timeout=30
+        )
+
+        with open(log_file, 'w') as f:
+            f.write(f"Container: {container_name}\n")
+            f.write(f"Timestamp: {datetime.datetime.now()}\n")
+            f.write(f"{'='*50}\n\n")
+            f.write(result.stdout)
+            if result.stderr:
+                f.write("\n\n--- STDERR ---\n")
+                f.write(result.stderr)
+
+        print(f"✅ Saved logs for {container_name} to {log_file}")
+        return log_file
+    except Exception as e:
+        print(f"❌ Failed to save logs for {container_name}: {e}")
+        return None
+
+def check_container_health():
+    """Check container health and notify on failures"""
+    global container_states
+
+    if not ALLOWED_USER_ID:
+        return
+
+    containers = get_all_containers()
+    if not containers:
+        return
+
+    current_states = {c['name']: c['state'] for c in containers}
+
+    # Detect failures (running -> exited/stopped/dead)
+    failed_containers = []
+    for name, current_state in current_states.items():
+        previous_state = container_states.get(name)
+
+        # Only alert if container went from running to not running
+        if previous_state == 'running' and current_state in ['exited', 'dead', 'stopped', 'paused']:
+            failed_containers.append({
+                'name': name,
+                'previous_state': previous_state,
+                'current_state': current_state,
+                'status': next((c['status'] for c in containers if c['name'] == name), 'unknown')
+            })
+
+    # Send notifications for failed containers
+    for failed in failed_containers:
+        try:
+            # Save logs
+            log_file = save_container_logs(failed['name'])
+
+            # Build notification message
+            message = f"🚨 *Container Failed!*\n\n"
+            message += f"Container: *{failed['name']}*\n"
+            message += f"Previous State: {failed['previous_state']}\n"
+            message += f"Current State: {failed['current_state']}\n"
+            message += f"Status: {failed['status']}\n\n"
+
+            if log_file:
+                message += f"📝 Logs saved to:\n`{log_file}`\n\n"
+
+            message += f"_Detected at {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}_"
+
+            # Send notification
+            bot.send_message(ALLOWED_USER_ID, message, parse_mode='Markdown')
+            print(f"🚨 Sent failure notification for {failed['name']}")
+
+        except Exception as e:
+            print(f"❌ Failed to send notification for {failed['name']}: {e}")
+
+    # Update state tracking
+    container_states = current_states
+
+def periodic_health_check():
+    """Run health check every 10 minutes"""
+    global container_states
+
+    # Initialize container states on first run
+    print("🔍 Initializing container health monitoring...")
+    try:
+        containers = get_all_containers()
+        container_states = {c['name']: c['state'] for c in containers}
+        print(f"✅ Initialized monitoring for {len(container_states)} containers")
+    except Exception as e:
+        print(f"❌ Failed to initialize container states: {e}")
+
+    # Wait 10 minutes before first check (to avoid false positives at startup)
+    time.sleep(600)
+
+    while True:
+        try:
+            print("🔍 Running periodic health check...")
+            check_container_health()
+        except Exception as e:
+            print(f"❌ Error in periodic health check: {e}")
+
+        # Wait 10 minutes
+        time.sleep(600)
 
 def send_startup_notification():
     """Send notification when homelab comes online"""
@@ -257,11 +399,16 @@ if __name__ == '__main__':
     setup_commands()
 
     # Send startup notification (runs in background)
-    import threading
     startup_thread = threading.Thread(target=send_startup_notification)
     startup_thread.daemon = True
     startup_thread.start()
 
+    # Start periodic health monitoring (runs in background)
+    health_check_thread = threading.Thread(target=periodic_health_check)
+    health_check_thread.daemon = True
+    health_check_thread.start()
+
     print("🤖 Bot started!")
     print("📬 Startup notification will be sent once containers are ready...")
+    print("🏥 Health monitoring will check containers every 10 minutes...")
     bot.infinity_polling()
