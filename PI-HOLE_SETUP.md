@@ -3,11 +3,11 @@
 ## Automated Installation (Recommended)
 
 ```bash
-# Use defaults (password: admin, IP: 192.168.1.69)
-./install-pihole.sh
+# Required: Set your server's IP address
+SERVER_IP=YOUR_SERVER_IP ./install-pihole.sh
 
-# Or customize:
-SERVER_IP=192.168.1.69 PIHOLE_PASSWORD=yourpassword ./install-pihole.sh
+# With custom password:
+SERVER_IP=YOUR_SERVER_IP PIHOLE_PASSWORD=yourpassword ./install-pihole.sh
 ```
 
 This script automatically:
@@ -25,8 +25,8 @@ docker run -d \
   --name pihole \
   --network homelab-shared \
   --restart unless-stopped \
-  -p 192.168.1.69:53:53/tcp \
-  -p 192.168.1.69:53:53/udp \
+  -p YOUR_SERVER_IP:53:53/tcp \
+  -p YOUR_SERVER_IP:53:53/udp \
   -e TZ='America/New_York' \
   -e WEBPASSWORD='admin' \
   -e DNSMASQ_LISTENING='all' \
@@ -52,16 +52,16 @@ docker restart pihole
 - Name: `/pihole`
 - Port: `80`
 - Target: `http://pihole:80`
-- Hostname: `pihole.hameed.tech`
+- Hostname: `YOUR_DOMAIN.com`
 - SSL: Yes
 
 ### 2. Restore Adlists
 
-- Login: https://pihole.hameed.tech (password: admin)
+- Login: https://YOUR_DOMAIN.com (password: admin)
 - Lists → Paste all URLs from backup → Add → Update Gravity
 
-### 3. Phone DNS Setup
+### 3. Device DNS Setup
 
 - Settings → WiFi → (i) → Configure DNS → Manual
-- Add: `192.168.1.69` ONLY
+- Add: `YOUR_SERVER_IP` ONLY
 - Remove all other DNS servers

@@ -4,12 +4,19 @@ set -e
 # Pi-hole Automated Installer
 # This script sets up Pi-hole with all critical configurations
 
-# Configuration
-SERVER_IP="${SERVER_IP:-192.168.1.69}"
+# Configuration - CUSTOMIZE THESE!
+SERVER_IP="${SERVER_IP}"  # Required: Set your server's IP
 PIHOLE_PASSWORD="${PIHOLE_PASSWORD:-admin}"
 TIMEZONE="${TZ:-America/New_York}"
 UPSTREAM_DNS="${PIHOLE_DNS:-8.8.8.8}"
 CONTAINER_NAME="pihole"
+
+# Validate required parameters
+if [ -z "$SERVER_IP" ]; then
+    echo "❌ ERROR: SERVER_IP is required"
+    echo "Usage: SERVER_IP=your.server.ip ./install-pihole.sh"
+    exit 1
+fi
 
 echo "🔧 Pi-hole Installer"
 echo "===================="
