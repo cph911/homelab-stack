@@ -12,9 +12,11 @@ import threading
 BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"
 ALLOWED_USER_ID = None
 LOG_DIR = os.path.expanduser("~/telegram-bot-logs")
+NOTIFICATION_COOLDOWN = 3600  # Don't re-notify for same container within 1 hour
 
 # Global state tracking for container health monitoring
 container_states = {}
+last_failure_notification = {}  # Track when we last notified for each container
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
@@ -110,7 +112,7 @@ def save_container_logs(container_name):
 
 def check_container_health():
     """Check container health and notify on failures"""
-    global container_states
+    global container_states, last_failure_notification
 
     if not ALLOWED_USER_ID:
         return
@@ -138,6 +140,14 @@ def check_container_health():
     # Send notifications for failed containers
     for failed in failed_containers:
         try:
+            # Check if we're in cooldown period for this container
+            current_time = time.time()
+            last_notified = last_failure_notification.get(failed['name'], 0)
+
+            if current_time - last_notified < NOTIFICATION_COOLDOWN:
+                print(f"⏭️ Skipping notification for {failed['name']} (cooldown: {int((NOTIFICATION_COOLDOWN - (current_time - last_notified)) / 60)} minutes remaining)")
+                continue
+
             # Save logs
             log_file = save_container_logs(failed['name'])
 
@@ -155,10 +165,17 @@ def check_container_health():
 
             # Send notification
             bot.send_message(ALLOWED_USER_ID, message, parse_mode='Markdown')
+            last_failure_notification[failed['name']] = current_time
             print(f"🚨 Sent failure notification for {failed['name']}")
 
         except Exception as e:
             print(f"❌ Failed to send notification for {failed['name']}: {e}")
+
+    # Clear cooldown for containers that are now running (recovered)
+    for name, state in current_states.items():
+        if state == 'running' and name in last_failure_notification:
+            del last_failure_notification[name]
+            print(f"✅ {name} recovered - cooldown cleared")
 
     # Update state tracking
     container_states = current_states
@@ -313,6 +330,56 @@ def restart_container(message):
 
     bot.reply_to(message, "🔄 *Select container to restart:*", reply_markup=markup, parse_mode='Markdown')
 
+@bot.message_handler(commands=['stop'])
+def stop_container(message):
+    if ALLOWED_USER_ID and message.from_user.id != ALLOWED_USER_ID:
+        bot.reply_to(message, "⛔ Unauthorized")
+        return
+
+    # Check if container name was provided
+    args = message.text.split()
+    if len(args) >= 2:
+        # Direct stop with container name
+        container_name = args[1]
+        try:
+            subprocess.run(['docker', 'stop', container_name], check=True, timeout=30)
+            bot.reply_to(message, f"🛑 Stopped *{container_name}*", parse_mode='Markdown')
+        except subprocess.CalledProcessError as e:
+            bot.reply_to(message, f"❌ Failed to stop *{container_name}*\nError: {str(e)}", parse_mode='Markdown')
+        except Exception as e:
+            bot.reply_to(message, f"❌ Error: {str(e)}")
+        return
+
+    # No container name provided - show selection menu
+    containers = get_containers()
+    if not containers:
+        bot.reply_to(message, "❌ No running containers found")
+        return
+
+    # Create inline keyboard with container buttons
+    markup = types.InlineKeyboardMarkup(row_width=2)
+    buttons = []
+
+    for container in containers:
+        emoji = "✅" if container['state'] == 'running' else "❌"
+        button = types.InlineKeyboardButton(
+            text=f"{emoji} {container['name']}",
+            callback_data=f"stop:{container['name']}"
+        )
+        buttons.append(button)
+
+    # Add buttons in pairs (2 per row)
+    for i in range(0, len(buttons), 2):
+        if i + 1 < len(buttons):
+            markup.row(buttons[i], buttons[i + 1])
+        else:
+            markup.row(buttons[i])
+
+    # Add cancel button
+    markup.row(types.InlineKeyboardButton("❌ Cancel", callback_data="cancel"))
+
+    bot.reply_to(message, "🛑 *Select container to stop:*", reply_markup=markup, parse_mode='Markdown')
+
 @bot.callback_query_handler(func=lambda call: True)
 def handle_callback(call):
     if ALLOWED_USER_ID and call.from_user.id != ALLOWED_USER_ID:
@@ -370,12 +437,55 @@ def handle_callback(call):
             )
             bot.answer_callback_query(call.id, f"❌ Error occurred", show_alert=True)
 
+    if call.data.startswith("stop:"):
+        container_name = call.data.split(":", 1)[1]
+
+        # Update message to show stopping status
+        bot.edit_message_text(
+            f"🛑 Stopping *{container_name}*...",
+            call.message.chat.id,
+            call.message.message_id,
+            parse_mode='Markdown'
+        )
+
+        try:
+            # Stop the container
+            subprocess.run(['docker', 'stop', container_name], check=True, timeout=30)
+
+            # Update message with success
+            bot.edit_message_text(
+                f"🛑 Successfully stopped *{container_name}*",
+                call.message.chat.id,
+                call.message.message_id,
+                parse_mode='Markdown'
+            )
+            bot.answer_callback_query(call.id, f"🛑 {container_name} stopped")
+
+        except subprocess.CalledProcessError as e:
+            bot.edit_message_text(
+                f"❌ Failed to stop *{container_name}*\n\nError: Container not found or stop failed",
+                call.message.chat.id,
+                call.message.message_id,
+                parse_mode='Markdown'
+            )
+            bot.answer_callback_query(call.id, f"❌ Stop failed", show_alert=True)
+
+        except Exception as e:
+            bot.edit_message_text(
+                f"❌ Error stopping *{container_name}*\n\n{str(e)}",
+                call.message.chat.id,
+                call.message.message_id,
+                parse_mode='Markdown'
+            )
+            bot.answer_callback_query(call.id, f"❌ Error occurred", show_alert=True)
+
 @bot.message_handler(commands=['help'])
 def send_help(message):
     bot.reply_to(message, """🤖 *Homelab Health Bot*
 
 /health - Container status report
 /restart - Restart a container (shows menu)
+/stop - Stop a container (shows menu)
 /help - Show this message
 
 Type / to see all commands!""", parse_mode='Markdown')
@@ -385,6 +495,7 @@ def setup_commands():
     commands = [
         types.BotCommand("health", "Check container health status"),
         types.BotCommand("restart", "Restart a container"),
+        types.BotCommand("stop", "Stop a container"),
         types.BotCommand("help", "Show help message")
     ]
     bot.set_my_commands(commands)

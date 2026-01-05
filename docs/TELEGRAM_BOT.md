@@ -5,8 +5,9 @@ Monitor and manage your Docker containers remotely via Telegram. Check container
 ## ✨ Features
 
 - **Container Health Checks**: Get instant status reports for all running containers
-- **Remote Restart**: Restart containers directly from Telegram
+- **Remote Container Control**: Restart or stop containers directly from Telegram
 - **Automatic Failure Notifications**: Get instant alerts when containers fail (checked every 10 minutes)
+- **Smart Notification Throttling**: Prevents spam from crash loops (1-hour cooldown per container)
 - **Automatic Log Capture**: Failed container logs are automatically saved for troubleshooting
 - **Startup Notifications**: Get notified when your homelab comes online
 - **24/7 Monitoring**: Runs as a systemd service in the background
@@ -399,6 +400,7 @@ When you type `/` in the chat, Telegram will show you all available commands:
 
 - `/health` - Check container health status
 - `/restart` - Restart a container
+- `/stop` - Stop a container
 - `/help` - Show help message
 
 Just tap a command to use it!
@@ -411,6 +413,10 @@ Just tap a command to use it!
 **Restart Container:**
 - `/restart` - Shows interactive menu with all containers
 - `/restart <container_name>` - Directly restart a specific container (advanced)
+
+**Stop Container:**
+- `/stop` - Shows interactive menu with all running containers
+- `/stop <container_name>` - Directly stop a specific container (advanced)
 
 **Help:**
 - `/start` or `/help` - Show help message
@@ -469,6 +475,36 @@ Response:
 ✅ Restarted portainer
 ```
 
+**Stop container (Interactive Menu):**
+```
+/stop
+```
+
+Response: Bot shows clickable buttons with all running containers:
+```
+🛑 Select container to stop:
+
+[✅ qbittorrent]  [✅ navidrome]
+[✅ jellyfin]     [✅ portainer]
+[✅ n8n]          [✅ postgres]
+[✅ traefik]      [❌ Cancel]
+```
+
+Tap a container button → Bot stops it and shows:
+```
+🛑 Successfully stopped portainer
+```
+
+**Stop container (Direct Command):**
+```
+/stop portainer
+```
+
+Response:
+```
+🛑 Stopped portainer
+```
+
 ---
 
 ## 🚨 Automatic Failure Monitoring
@@ -479,8 +515,10 @@ The bot automatically monitors your containers for failures and sends you instan
 
 - **Periodic Checks**: Every 10 minutes, the bot checks all container states
 - **Failure Detection**: If a container transitions from "running" to "exited", "stopped", or "dead", you get notified
+- **Crash Loop Protection**: 1-hour cooldown prevents notification spam from repeatedly failing containers
 - **Automatic Log Capture**: When a failure is detected, the bot automatically saves the last 500 lines of container logs
 - **Historical Record**: Logs are saved with timestamps in `~/telegram-bot-logs/` for later analysis
+- **Auto Recovery Detection**: When a failed container recovers, the notification cooldown is cleared
 
 ### Example Notification
 
@@ -526,6 +564,15 @@ find ~/telegram-bot-logs/ -name "*.log" -mtime +30 -delete
 - The first health check runs 10 minutes after bot startup to avoid false positives
 - Logs are captured at the moment of failure, preserving critical debugging information
 - Each failure generates a separate notification and log file
+
+### Crash Loop Protection
+
+If a container is in a crash loop (repeatedly failing and restarting):
+- You'll get notified on the **first failure**
+- Subsequent failures are **silenced for 1 hour** to prevent spam
+- Once the container **runs successfully**, the cooldown is cleared
+- This prevents notification fatigue while still alerting you to real issues
+- Use `/stop <container>` to remotely stop a misbehaving container until you can investigate
 
 ---
 
