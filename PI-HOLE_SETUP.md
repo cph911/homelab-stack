@@ -1,6 +1,24 @@
 # Pi-hole Quick Setup Guide
 
-## 1. Install Pi-hole
+## Automated Installation (Recommended)
+
+```bash
+# Use defaults (password: admin, IP: 192.168.1.69)
+./install-pihole.sh
+
+# Or customize:
+SERVER_IP=192.168.1.69 PIHOLE_PASSWORD=yourpassword ./install-pihole.sh
+```
+
+This script automatically:
+- Removes old Pi-hole container
+- Installs Pi-hole with correct network settings
+- Fixes the listening mode to allow external devices
+- Restarts and verifies the installation
+
+## Manual Installation
+
+### 1. Install Pi-hole
 
 ```bash
 docker run -d \
@@ -18,7 +36,7 @@ docker run -d \
   pihole/pihole:latest
 ```
 
-## 2. Fix Listening Mode (CRITICAL!)
+### 2. Fix Listening Mode (CRITICAL!)
 
 ```bash
 # Change LOCAL to ALL mode
@@ -26,7 +44,9 @@ docker exec pihole sed -i 's/listeningMode = "LOCAL"/listeningMode = "ALL"/' /et
 docker restart pihole
 ```
 
-## 3. Add to Cosmos
+## Next Steps After Installation
+
+### 1. Add to Cosmos
 
 - Cosmos → URLs → New URL
 - Name: `/pihole`
@@ -35,12 +55,12 @@ docker restart pihole
 - Hostname: `pihole.hameed.tech`
 - SSL: Yes
 
-## 4. Restore Adlists
+### 2. Restore Adlists
 
 - Login: https://pihole.hameed.tech (password: admin)
 - Lists → Paste all URLs from backup → Add → Update Gravity
 
-## 5. Phone DNS Setup
+### 3. Phone DNS Setup
 
 - Settings → WiFi → (i) → Configure DNS → Manual
 - Add: `192.168.1.69` ONLY
