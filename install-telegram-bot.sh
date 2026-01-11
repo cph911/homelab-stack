@@ -75,22 +75,39 @@ if ! command -v python3 &> /dev/null; then
 fi
 log_success "Python3 installed"
 
-# Check if python3-telebot is installed
-if ! python3 -c "import telebot" &> /dev/null; then
-    log_warning "python3-telebot is not installed"
-    read -p "Install python3-telebot now? (y/n): " -n 1 -r
+# Check if pip3 is installed
+if ! command -v pip3 &> /dev/null; then
+    log_warning "pip3 is not installed"
+    read -p "Install pip3 now? (y/n): " -n 1 -r
     echo
     if [[ $REPLY =~ ^[Yy]$ ]]; then
-        log_info "Installing python3-telebot..."
+        log_info "Installing pip3..."
         sudo apt update
-        sudo apt install -y python3-telebot
-        log_success "python3-telebot installed"
+        sudo apt install -y python3-pip
+        log_success "pip3 installed"
     else
-        log_error "python3-telebot is required. Exiting."
+        log_error "pip3 is required. Exiting."
         exit 1
     fi
 else
-    log_success "python3-telebot installed"
+    log_success "pip3 installed"
+fi
+
+# Check if pyTelegramBotAPI is installed
+if ! python3 -c "import telebot" &> /dev/null; then
+    log_warning "pyTelegramBotAPI is not installed"
+    read -p "Install pyTelegramBotAPI now? (y/n): " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        log_info "Installing pyTelegramBotAPI via pip..."
+        pip3 install pyTelegramBotAPI --break-system-packages 2>/dev/null || pip3 install pyTelegramBotAPI --user
+        log_success "pyTelegramBotAPI installed"
+    else
+        log_error "pyTelegramBotAPI is required. Exiting."
+        exit 1
+    fi
+else
+    log_success "pyTelegramBotAPI installed"
 fi
 
 # Step 2: Get Bot Credentials

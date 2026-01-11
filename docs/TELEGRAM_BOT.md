@@ -51,7 +51,7 @@ cd ~/homelab-stack
 ```
 
 The installer will:
-- ✅ Check prerequisites (Docker, Python3, python3-telebot)
+- ✅ Check prerequisites (Docker, Python3, pip3, pyTelegramBotAPI)
 - ✅ Install missing dependencies (with your permission)
 - ✅ Prompt for your bot token and user ID
 - ✅ Validate credentials format
@@ -84,7 +84,10 @@ If you prefer to install manually or want to understand what the installer does,
 
 ```bash
 sudo apt update
-sudo apt install -y python3-telebot
+sudo apt install -y python3-pip
+pip3 install pyTelegramBotAPI --break-system-packages
+# Or if the above fails, use:
+# pip3 install pyTelegramBotAPI --user
 ```
 
 ### Step 2: Create Bot Script
@@ -627,7 +630,7 @@ sudo journalctl -u telegram-bot -n 50
 **Common issues:**
 - Wrong bot token → Edit `bot.py` and fix the token
 - Wrong user ID → Edit service file and fix the user ID
-- Python library not installed → Run `sudo apt install -y python3-telebot`
+- Python library not installed → Run `pip3 install pyTelegramBotAPI --break-system-packages`
 
 ### "Could not resolve host: api.telegram.org"
 
