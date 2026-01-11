@@ -664,14 +664,18 @@ Type / to see all commands!""", parse_mode='Markdown')
 
 def setup_commands():
     """Set bot commands for the menu"""
-    commands = [
-        types.BotCommand("health", "Check container health status"),
-        types.BotCommand("restart", "Restart a container"),
-        types.BotCommand("stop", "Stop a container"),
-        types.BotCommand("help", "Show help message")
-    ]
-    bot.set_my_commands(commands)
-    print("✅ Bot commands configured")
+    try:
+        commands = [
+            types.BotCommand("health", "Check container health status"),
+            types.BotCommand("restart", "Restart a container"),
+            types.BotCommand("stop", "Stop a container"),
+            types.BotCommand("help", "Show help message")
+        ]
+        bot.set_my_commands(commands)
+        print("✅ Bot commands configured")
+    except Exception as e:
+        print(f"⚠️ Warning: Could not set bot commands (bot will still work): {e}")
+        print("   This is usually due to DNS issues. Commands can be set later.")
 
 if __name__ == '__main__':
     if len(sys.argv) > 1:
@@ -694,7 +698,15 @@ if __name__ == '__main__':
     print("🤖 Bot started!")
     print("📬 Startup notification will be sent once containers are ready...")
     print("🏥 Health monitoring will check containers every 10 minutes...")
-    bot.infinity_polling()
+
+    # Start polling with retry logic for network issues
+    while True:
+        try:
+            bot.infinity_polling(timeout=30, long_polling_timeout=30)
+        except Exception as e:
+            print(f"❌ Bot polling error: {e}")
+            print("🔄 Retrying in 15 seconds...")
+            time.sleep(15)
 BOTSCRIPT
 
 # Replace placeholders with actual credentials
