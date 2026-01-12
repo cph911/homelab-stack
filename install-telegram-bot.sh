@@ -439,14 +439,29 @@ def get_system_stats():
             'available': mem.available
         }
 
-        # Disk usage
-        disk = psutil.disk_usage('/')
-        stats['disk'] = {
-            'total': disk.total,
-            'used': disk.used,
-            'percent': disk.percent,
-            'free': disk.free
-        }
+        # Disk usage - Get all mounted disks
+        stats['disks'] = []
+        partitions = psutil.disk_partitions(all=False)
+
+        for partition in partitions:
+            # Skip virtual/system filesystems
+            if partition.fstype in ['tmpfs', 'devtmpfs', 'squashfs', 'overlay', 'aufs']:
+                continue
+
+            try:
+                usage = psutil.disk_usage(partition.mountpoint)
+                stats['disks'].append({
+                    'device': partition.device,
+                    'mountpoint': partition.mountpoint,
+                    'fstype': partition.fstype,
+                    'total': usage.total,
+                    'used': usage.used,
+                    'free': usage.free,
+                    'percent': usage.percent
+                })
+            except PermissionError:
+                # Skip disks we can't access
+                continue
 
         # GPU usage (NVIDIA only - requires nvidia-smi)
         try:
@@ -598,12 +613,18 @@ def send_system_stats(message):
     report += f"   Used: {format_bytes(mem['used'])} / {format_bytes(mem['total'])}\n"
     report += f"   Available: {format_bytes(mem['available'])}\n\n"
 
-    # Disk
-    disk = stats['disk']
-    disk_emoji = "🔴" if disk['percent'] > 90 else "⚠️" if disk['percent'] > 80 else "✅"
-    report += f"{disk_emoji} *Storage:* {disk['percent']:.1f}%\n"
-    report += f"   Used: {format_bytes(disk['used'])} / {format_bytes(disk['total'])}\n"
-    report += f"   Free: {format_bytes(disk['free'])}\n\n"
+    # Storage - Show all disks
+    if stats.get('disks'):
+        report += "💾 *Storage:*\n"
+        for disk in stats['disks']:
+            disk_emoji = "🔴" if disk['percent'] > 90 else "⚠️" if disk['percent'] > 80 else "✅"
+            # Get a nice name for the mount point
+            mount_name = disk['mountpoint'] if disk['mountpoint'] != '/' else 'Root'
+            device_name = disk['device'].split('/')[-1]  # Get just the device name (e.g., sda1)
+
+            report += f"{disk_emoji} *{mount_name}* ({device_name}): {disk['percent']:.1f}%\n"
+            report += f"   Used: {format_bytes(disk['used'])} / {format_bytes(disk['total'])}\n"
+            report += f"   Free: {format_bytes(disk['free'])}\n\n"
 
     # GPU (if available)
     if 'gpu' in stats:
