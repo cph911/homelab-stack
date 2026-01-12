@@ -110,6 +110,23 @@ else
     log_success "pyTelegramBotAPI installed"
 fi
 
+# Check if psutil is installed
+if ! python3 -c "import psutil" &> /dev/null; then
+    log_warning "psutil is not installed"
+    read -p "Install psutil now? (y/n): " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        log_info "Installing psutil via pip..."
+        pip3 install psutil --break-system-packages 2>/dev/null || pip3 install psutil --user
+        log_success "psutil installed"
+    else
+        log_error "psutil is required for system monitoring. Exiting."
+        exit 1
+    fi
+else
+    log_success "psutil installed"
+fi
+
 # Step 2: Get Bot Credentials
 print_header "Step 2: Bot Configuration"
 
@@ -179,6 +196,8 @@ import time
 import os
 import datetime
 import threading
+import psutil
+import shutil
 
 # Configuration
 BOT_TOKEN = "BOT_TOKEN_PLACEHOLDER"
@@ -378,6 +397,101 @@ def periodic_health_check():
         # Wait 10 minutes
         time.sleep(600)
 
+def get_system_stats():
+    """Get comprehensive system statistics"""
+    try:
+        stats = {}
+
+        # CPU usage and info
+        cpu_percent = psutil.cpu_percent(interval=1)
+        cpu_count = psutil.cpu_count()
+        cpu_freq = psutil.cpu_freq()
+        stats['cpu'] = {
+            'percent': cpu_percent,
+            'count': cpu_count,
+            'freq': cpu_freq.current if cpu_freq else 0
+        }
+
+        # CPU temperature (if available)
+        try:
+            temps = psutil.sensors_temperatures()
+            if temps:
+                # Try to get coretemp (Intel) or k10temp (AMD) or other common sensors
+                temp_keys = ['coretemp', 'k10temp', 'cpu_thermal', 'soc_thermal']
+                for key in temp_keys:
+                    if key in temps and temps[key]:
+                        stats['cpu']['temp'] = temps[key][0].current
+                        break
+                # If no specific sensor found, use first available
+                if 'temp' not in stats['cpu']:
+                    first_sensor = list(temps.values())[0]
+                    if first_sensor:
+                        stats['cpu']['temp'] = first_sensor[0].current
+        except (AttributeError, IndexError, KeyError):
+            pass
+
+        # Memory usage
+        mem = psutil.virtual_memory()
+        stats['memory'] = {
+            'total': mem.total,
+            'used': mem.used,
+            'percent': mem.percent,
+            'available': mem.available
+        }
+
+        # Disk usage
+        disk = psutil.disk_usage('/')
+        stats['disk'] = {
+            'total': disk.total,
+            'used': disk.used,
+            'percent': disk.percent,
+            'free': disk.free
+        }
+
+        # GPU usage (NVIDIA only - requires nvidia-smi)
+        try:
+            result = subprocess.run(
+                ['nvidia-smi', '--query-gpu=utilization.gpu,temperature.gpu,memory.used,memory.total',
+                 '--format=csv,noheader,nounits'],
+                capture_output=True, text=True, timeout=5, check=True
+            )
+            if result.stdout.strip():
+                gpu_data = result.stdout.strip().split(',')
+                if len(gpu_data) >= 4:
+                    stats['gpu'] = {
+                        'utilization': float(gpu_data[0].strip()),
+                        'temp': float(gpu_data[1].strip()),
+                        'memory_used': float(gpu_data[2].strip()),
+                        'memory_total': float(gpu_data[3].strip())
+                    }
+        except (subprocess.CalledProcessError, FileNotFoundError, ValueError):
+            pass
+
+        # Top 5 processes by CPU
+        processes = []
+        for proc in psutil.process_iter(['pid', 'name', 'cpu_percent', 'memory_percent']):
+            try:
+                processes.append(proc.info)
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
+
+        # Sort by CPU usage
+        processes.sort(key=lambda x: x['cpu_percent'] or 0, reverse=True)
+        stats['top_processes'] = processes[:5]
+
+        return stats
+    except Exception as e:
+        print(f"❌ Error getting system stats: {e}")
+        return None
+
+def format_bytes(bytes_value):
+    """Format bytes to human readable format"""
+    for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+        if bytes_value < 1024.0:
+            return f"{bytes_value:.1f}{unit}"
+        bytes_value /= 1024.0
+    return f"{bytes_value:.1f}PB"
+
 def send_startup_notification():
     """Send notification when homelab comes online"""
     if not ALLOWED_USER_ID:
@@ -449,6 +563,64 @@ def send_health(message):
     for container in containers:
         emoji = "✅" if container['state'] == 'running' else "❌"
         report += f"{emoji} *{container['name']}*\n   {container['status']}\n\n"
+
+    bot.reply_to(message, report, parse_mode='Markdown')
+
+@bot.message_handler(commands=['system', 'stats'])
+def send_system_stats(message):
+    if ALLOWED_USER_ID and message.from_user.id != ALLOWED_USER_ID:
+        bot.reply_to(message, "⛔ Unauthorized")
+        return
+
+    stats = get_system_stats()
+    if not stats:
+        bot.reply_to(message, "❌ Error getting system statistics")
+        return
+
+    report = "💻 *System Statistics*\n\n"
+
+    # CPU
+    cpu = stats['cpu']
+    cpu_emoji = "🔥" if cpu['percent'] > 80 else "⚡" if cpu['percent'] > 50 else "✅"
+    report += f"{cpu_emoji} *CPU:* {cpu['percent']:.1f}%\n"
+    report += f"   Cores: {cpu['count']}\n"
+    if cpu.get('freq'):
+        report += f"   Frequency: {cpu['freq']:.0f} MHz\n"
+    if cpu.get('temp'):
+        temp_emoji = "🔥" if cpu['temp'] > 80 else "🌡️"
+        report += f"   {temp_emoji} Temperature: {cpu['temp']:.1f}°C\n"
+    report += "\n"
+
+    # Memory
+    mem = stats['memory']
+    mem_emoji = "🔥" if mem['percent'] > 80 else "⚠️" if mem['percent'] > 70 else "✅"
+    report += f"{mem_emoji} *Memory:* {mem['percent']:.1f}%\n"
+    report += f"   Used: {format_bytes(mem['used'])} / {format_bytes(mem['total'])}\n"
+    report += f"   Available: {format_bytes(mem['available'])}\n\n"
+
+    # Disk
+    disk = stats['disk']
+    disk_emoji = "🔴" if disk['percent'] > 90 else "⚠️" if disk['percent'] > 80 else "✅"
+    report += f"{disk_emoji} *Storage:* {disk['percent']:.1f}%\n"
+    report += f"   Used: {format_bytes(disk['used'])} / {format_bytes(disk['total'])}\n"
+    report += f"   Free: {format_bytes(disk['free'])}\n\n"
+
+    # GPU (if available)
+    if 'gpu' in stats:
+        gpu = stats['gpu']
+        gpu_emoji = "🔥" if gpu['utilization'] > 80 else "⚡" if gpu['utilization'] > 50 else "✅"
+        report += f"{gpu_emoji} *GPU:* {gpu['utilization']:.1f}%\n"
+        report += f"   Temperature: {gpu['temp']:.0f}°C\n"
+        gpu_mem_percent = (gpu['memory_used'] / gpu['memory_total']) * 100 if gpu['memory_total'] > 0 else 0
+        report += f"   Memory: {gpu['memory_used']:.0f}MB / {gpu['memory_total']:.0f}MB ({gpu_mem_percent:.1f}%)\n\n"
+
+    # Top processes
+    if stats.get('top_processes'):
+        report += "🔝 *Top Processes (CPU):*\n"
+        for proc in stats['top_processes'][:5]:
+            cpu_p = proc.get('cpu_percent', 0) or 0
+            mem_p = proc.get('memory_percent', 0) or 0
+            report += f"   • {proc['name'][:20]}: {cpu_p:.1f}% CPU, {mem_p:.1f}% RAM\n"
 
     bot.reply_to(message, report, parse_mode='Markdown')
 
@@ -656,6 +828,7 @@ def send_help(message):
     bot.reply_to(message, """🤖 *Homelab Health Bot*
 
 /health - Container status report
+/system - System stats (CPU, RAM, Storage, GPU)
 /restart - Restart a container (shows menu)
 /stop - Stop a container (shows menu)
 /help - Show this message
@@ -667,6 +840,7 @@ def setup_commands():
     try:
         commands = [
             types.BotCommand("health", "Check container health status"),
+            types.BotCommand("system", "View system stats (CPU, RAM, Storage, GPU)"),
             types.BotCommand("restart", "Restart a container"),
             types.BotCommand("stop", "Stop a container"),
             types.BotCommand("help", "Show help message")
