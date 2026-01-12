@@ -482,18 +482,6 @@ def get_system_stats():
         except (subprocess.CalledProcessError, FileNotFoundError, ValueError):
             pass
 
-        # Top 5 processes by CPU
-        processes = []
-        for proc in psutil.process_iter(['pid', 'name', 'cpu_percent', 'memory_percent']):
-            try:
-                processes.append(proc.info)
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                pass
-
-        # Sort by CPU usage
-        processes.sort(key=lambda x: x['cpu_percent'] or 0, reverse=True)
-        stats['top_processes'] = processes[:5]
-
         return stats
     except Exception as e:
         print(f"❌ Error getting system stats: {e}")
@@ -634,14 +622,6 @@ def send_system_stats(message):
         report += f"   Temperature: {gpu['temp']:.0f}°C\n"
         gpu_mem_percent = (gpu['memory_used'] / gpu['memory_total']) * 100 if gpu['memory_total'] > 0 else 0
         report += f"   Memory: {gpu['memory_used']:.0f}MB / {gpu['memory_total']:.0f}MB ({gpu_mem_percent:.1f}%)\n\n"
-
-    # Top processes
-    if stats.get('top_processes'):
-        report += "🔝 *Top Processes (CPU):*\n"
-        for proc in stats['top_processes'][:5]:
-            cpu_p = proc.get('cpu_percent', 0) or 0
-            mem_p = proc.get('memory_percent', 0) or 0
-            report += f"   • {proc['name'][:20]}: {cpu_p:.1f}% CPU, {mem_p:.1f}% RAM\n"
 
     bot.reply_to(message, report, parse_mode='Markdown')
 
